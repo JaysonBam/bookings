@@ -1,21 +1,53 @@
-# React + TypeScript + Vite
+## Bookings App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+### Tech Stack
+- **Frontend:** React (TypeScript, Vite)
+- **Authentication:** Google Auth (via Supabase)
+- **Backend/Database:** Supabase
+- **Deployment:** Vercel
 
-While this project uses React, Vite supports many popular JS frameworks. [See all the supported frameworks](https://vitejs.dev/guide/#scaffolding-your-first-vite-project).
+---
 
-## Deploy Your Own
+### Prerequisites
+- Node.js (v18 or higher recommended)
+- npm (v9 or higher)
+- Supabase project (with Google Auth enabled)
+- Vercel account (for deployment)
 
-Deploy your own Vite project with Vercel.
+---
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vercel/examples/tree/main/framework-boilerplates/vite-react&template=vite-react)
+### Setup & Run Locally
+1. **Clone the repository:**
+	```bash
+	git clone <repo-url>
+	cd bookings
+	```
+2. **Install dependencies:**
+	```bash
+	npm install
+	```
+3. **Configure environment variables:**
+	- Create a `.env` file in the root directory.
+	- Add your Supabase project URL and anon/public key, e.g.:
+	  ```env
+	  VITE_SUPABASE_URL=your-supabase-url
+	  VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+	  ```
+4. **Run the development server:**
+	```bash
+	npm run dev
+	```
+5. **Access the app:**
+	- Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-_Live Example: https://vite-react-example.vercel.app_
+---
 
-### Deploying From Your Terminal
+### Google Auth & Supabase
+- Google authentication is handled via Supabase Auth.
+- Ensure you have enabled Google Auth in your Supabase project and configured the correct redirect URLs.
 
-You can deploy your new Vite project with a single command from your terminal using [Vercel CLI](https://vercel.com/download):
+---
 
-```shell
-$ vercel
-```
+### Deployment
+- The app is deployed on [Vercel](https://vercel.com/).
+- Push to the main branch to trigger deployment (if connected to Vercel).
