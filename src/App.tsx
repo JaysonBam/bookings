@@ -18,7 +18,7 @@ import { LayoutProvider, useLayout } from './components/LayoutContext'
 function Layout({ children }: { children: React.ReactNode }) {
   const { open, onToggle, drawerWidth } = useLayout()
   return (
-    <Box sx={{ display: 'flex', height: '100%' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', overflow: 'hidden', width: '100%' }}>
       <Sidebar drawerWidth={drawerWidth} open={open} onToggle={onToggle} />
       <Box
         component="main"
@@ -26,7 +26,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           flexGrow: 1,
           p: 3,
           ml: open ? `${drawerWidth}px` : 0,
-          height: '100%',
+          width: open ? `calc(100% - ${drawerWidth}px)` : '100%',
           boxSizing: 'border-box',
           display: 'flex',
           flexDirection: 'column',
@@ -34,7 +34,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         }}
       >
         <Toolbar />
-        <Box sx={{ flex: 1, overflow: 'hidden' }}>{children}</Box>
+        <Box sx={{ flex: 1, overflow: 'auto' }}>{children}</Box>
       </Box>
     </Box>
   )
