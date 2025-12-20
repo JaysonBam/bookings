@@ -1,7 +1,6 @@
-import React, { createContext, useContext } from 'react'
+import React, { createContext, useContext, useState } from 'react'
 
 type LayoutContextType = {
-  isMobile: boolean
   open: boolean
   mobileOpen: boolean
   drawerWidth: number
@@ -10,7 +9,17 @@ type LayoutContextType = {
 
 const LayoutContext = createContext<LayoutContextType | undefined>(undefined)
 
-export function LayoutProvider({ value, children }: { value: LayoutContextType; children: React.ReactNode }) {
+export function LayoutProvider({ children, initialOpen = false, initialDrawerWidth = 280 }: { children: React.ReactNode; initialOpen?: boolean; initialDrawerWidth?: number }) {
+  const [open, setOpen] = useState(initialOpen)
+  const onToggle = () => setOpen((s) => !s)
+
+  const value: LayoutContextType = {
+    open,
+    mobileOpen: false,
+    drawerWidth: initialDrawerWidth,
+    onToggle,
+  }
+
   return <LayoutContext.Provider value={value}>{children}</LayoutContext.Provider>
 }
 
