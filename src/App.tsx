@@ -31,6 +31,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)'
         }}
       >
         <Toolbar />
