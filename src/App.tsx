@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { Box, Toolbar, CssBaseline } from '@mui/material'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
-import { useState } from 'react'
 
 import LoginPage from './pages/login/page'
 import BookingsPage from './pages/bookings/page'
@@ -17,13 +16,25 @@ import Sidebar from './components/Sidebar'
 import { LayoutProvider, useLayout } from './components/LayoutContext'
 
 function Layout({ children }: { children: React.ReactNode }) {
-  const { isMobile, open, mobileOpen, onToggle, drawerWidth } = useLayout()
+  const { open, onToggle, drawerWidth } = useLayout()
   return (
-    <Box sx={{ display: 'flex' }}>
-      <Sidebar drawerWidth={drawerWidth} open={open} mobileOpen={mobileOpen} isMobile={isMobile} onToggle={onToggle} />
-      <Box component="main" sx={{ flexGrow: 1, p: 3, ml: open && !isMobile ? `${drawerWidth}px` : 0 }}>
+    <Box sx={{ display: 'flex', height: '100%' }}>
+      <Sidebar drawerWidth={drawerWidth} open={open} onToggle={onToggle} />
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: 3,
+          ml: open ? `${drawerWidth}px` : 0,
+          height: '100%',
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
         <Toolbar />
-        {children}
+        <Box sx={{ flex: 1, overflow: 'hidden' }}>{children}</Box>
       </Box>
     </Box>
   )
@@ -31,34 +42,17 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 
 function App() {
-  // Use system theme
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
   const theme = createTheme({
     palette: {
       mode: prefersDarkMode ? 'dark' : 'light',
     },
   })
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
-  const [open, setOpen] = useState(true)
-  const [mobileOpen, setMobileOpen] = useState(false)
-
-  const handleToggle = () => {
-    if (isMobile) setMobileOpen((s) => !s)
-    else setOpen((s) => !s)
-  }
-
-  const ctxValue = {
-    isMobile,
-    open,
-    mobileOpen,
-    drawerWidth: 280,
-    onToggle: handleToggle,
-  }
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <LayoutProvider value={ctxValue}>
+      <LayoutProvider>
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />

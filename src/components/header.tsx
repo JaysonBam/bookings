@@ -4,35 +4,12 @@ import { useTheme } from '@mui/material/styles'
 import { useLayout } from './LayoutContext'
 
 type Props = {
-  open?: boolean
-  isMobile?: boolean
-  drawerWidth?: number
-  onToggle?: () => void
   title?: string
 }
 
-export default function Header({ open, isMobile, drawerWidth = 280, onToggle, title = 'Dashboard Overview' }: Props) {
+export default function Header({ title = 'Dashboard Overview' }: Props) {
   const theme = useTheme()
-  let ctxOpen = open
-  let ctxIsMobile = isMobile
-  let ctxOnToggle = onToggle
-
-  let layout: any | undefined
-  try {
-    layout = useLayout()
-  } catch (e) {
-    layout = undefined
-  }
-
-  if (layout) {
-    if (open === undefined) ctxOpen = layout.open
-    if (isMobile === undefined) ctxIsMobile = layout.isMobile
-    if (onToggle === undefined) ctxOnToggle = layout.onToggle
-  }
-
-  const finalOpen = ctxOpen ?? false
-  const finalIsMobile = ctxIsMobile ?? false
-  const finalOnToggle = ctxOnToggle ?? (() => {})
+  const { open: finalOpen, onToggle: finalOnToggle, drawerWidth } = useLayout()
 
   return (
     <AppBar
@@ -44,11 +21,10 @@ export default function Header({ open, isMobile, drawerWidth = 280, onToggle, ti
           easing: theme.transitions.easing.sharp,
           duration: theme.transitions.duration.leavingScreen,
         }),
-        ...(finalOpen && !finalIsMobile && {
+        ...(finalOpen && {
           marginLeft: drawerWidth,
           width: `calc(100% - ${drawerWidth}px)`,
         }),
-        // Remove custom colors, use MUI default theme
       }}
     >
       <Toolbar>
@@ -59,7 +35,7 @@ export default function Header({ open, isMobile, drawerWidth = 280, onToggle, ti
           edge="start"
           sx={{
             marginRight: 2,
-            ...(finalOpen && !finalIsMobile && { display: 'none' }),
+            ...(finalOpen && { display: 'none' }),
           }}
         >
           <MenuIcon />

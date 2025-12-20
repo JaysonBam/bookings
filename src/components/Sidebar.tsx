@@ -22,6 +22,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment'
 import SettingsIcon from '@mui/icons-material/Settings'
 import LogoutIcon from '@mui/icons-material/Logout'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useLayout } from './LayoutContext'
 
 type User = {
   name: string
@@ -30,8 +31,6 @@ type User = {
 
 type Props = {
   open: boolean
-  mobileOpen: boolean
-  isMobile: boolean
   drawerWidth?: number
   currentUser?: User
   onToggle: () => void
@@ -40,25 +39,23 @@ type Props = {
 
 export default function Sidebar({
   open,
-  mobileOpen,
-  isMobile,
   drawerWidth = 280,
   currentUser,
   onToggle,
   onSignOut,
 }: Props) {
-  
-
-  const handleLogout = () => {
-    if (onSignOut) return onSignOut()
-    if (typeof window !== 'undefined') {
-      window.history.pushState({}, '', '/login')
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }
-  }
+  const layout = useLayout()
+  const finalOpen = open === undefined ? layout.open : open
+  const finalDrawerWidth = drawerWidth === undefined ? layout.drawerWidth : drawerWidth
+  const finalOnToggle = onToggle ?? layout.onToggle
 
   const location = useLocation()
   const navigate = useNavigate()
+
+  const handleLogout = () => {
+    if (onSignOut) return onSignOut()
+    navigate('/login')
+  }
 
   const DrawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -120,14 +117,15 @@ export default function Sidebar({
 
   return (
     <Drawer
-      variant={isMobile ? 'temporary' : 'persistent'}
-      open={isMobile ? mobileOpen : open}
-      onClose={onToggle}
+      variant="persistent"
+      open={finalOpen}
+      onClose={finalOnToggle}
       sx={{
-        width: drawerWidth,
+        width: finalDrawerWidth,
         flexShrink: 0,
         '& .MuiDrawer-paper': {
-          width: drawerWidth,
+          width: finalDrawerWidth,
+          height: '100vh',
           boxSizing: 'border-box',
           borderRight: '1px solid',
           borderColor: 'divider',
