@@ -1,6 +1,5 @@
 import {
   Box,
-  Drawer,
   Toolbar,
   Divider,
   List,
@@ -12,8 +11,11 @@ import {
   Typography,
   IconButton,
 } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
+import SwipeableDrawer from '@mui/material/SwipeableDrawer'
+import logo from '../assets/logo.svg'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
-import DashboardIcon from '@mui/icons-material/Dashboard'
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import KeyIcon from '@mui/icons-material/VpnKey'
 import BugReportIcon from '@mui/icons-material/BugReport'
 import DescriptionIcon from '@mui/icons-material/Description'
@@ -51,6 +53,7 @@ export default function Sidebar({
 
   const location = useLocation()
   const navigate = useNavigate()
+  const theme = useTheme()
 
   const handleLogout = () => {
     if (onSignOut) return onSignOut()
@@ -60,9 +63,16 @@ export default function Sidebar({
   const DrawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Toolbar sx={{ display: 'flex', alignItems: 'center', px: [2] }}>
-        <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 700 }}>
-          BRAND
-        </Typography>
+        <Box sx={{ flexGrow: 1, display: 'flex' }}>
+          <img
+            src={logo}
+            height = {100}
+            width= 'auto'
+            style={{
+              filter: theme.palette.mode === 'dark' ? 'invert(1) brightness(1)' : 'none',
+            }}
+          />
+        </Box>
         <IconButton onClick={onToggle}>
           <ChevronLeftIcon />
         </IconButton>
@@ -81,7 +91,7 @@ export default function Sidebar({
 
       <List sx={{ flexGrow: 1, pt: 2 }}>
         {[
-          { label: 'Bookings', path: '/bookings', icon: <DashboardIcon /> },
+          { label: 'Bookings', path: '/bookings', icon: <CalendarMonthIcon /> },
           { label: 'Access', path: '/access', icon: <KeyIcon /> },
           { label: 'Bug', path: '/bug', icon: <BugReportIcon /> },
           { label: 'Document', path: '/document', icon: <DescriptionIcon /> },
@@ -116,14 +126,15 @@ export default function Sidebar({
   )
 
   return (
-    <Drawer
-      variant="persistent"
+    <SwipeableDrawer
+      anchor="left"
       open={finalOpen}
       onClose={finalOnToggle}
-      sx={{
-        width: finalDrawerWidth,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
+      onOpen={finalOnToggle}
+      disableDiscovery={false}
+      swipeAreaWidth={20}
+      PaperProps={{
+        sx: {
           width: finalDrawerWidth,
           height: '100%',
           boxSizing: 'border-box',
@@ -133,6 +144,6 @@ export default function Sidebar({
       }}
     >
       {DrawerContent}
-    </Drawer>
+    </SwipeableDrawer>
   )
 }
