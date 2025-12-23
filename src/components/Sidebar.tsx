@@ -125,7 +125,7 @@ export default function Sidebar({
         flexShrink: 0,
         '& .MuiDrawer-paper': {
           width: finalDrawerWidth,
-          height: '100vh',
+          height: '100%',
           boxSizing: 'border-box',
           borderRight: '1px solid',
           borderColor: 'divider',
