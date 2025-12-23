@@ -58,7 +58,7 @@ export default function Sidebar({
   }
 
   const DrawerContent = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', paddingBottom: 'env(safe-area-inset-bottom, 0px)', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Toolbar sx={{ display: 'flex', alignItems: 'center', px: [2] }}>
         <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 700 }}>
           BRAND
@@ -79,7 +79,7 @@ export default function Sidebar({
 
       <Divider />
 
-      <List sx={{ flexGrow: 1, pt: 2, overflow: 'auto' }}>
+      <List sx={{ flexGrow: 1, pt: 2 }}>
         {[
           { label: 'Bookings', path: '/bookings', icon: <DashboardIcon /> },
           { label: 'Access', path: '/access', icon: <KeyIcon /> },
@@ -125,11 +125,10 @@ export default function Sidebar({
         flexShrink: 0,
         '& .MuiDrawer-paper': {
           width: finalDrawerWidth,
-          height: 'calc(100vh - env(safe-area-inset-top, 0px))',
+          height: '100vh',
           boxSizing: 'border-box',
           borderRight: '1px solid',
           borderColor: 'divider',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)'
         },
       }}
     >
