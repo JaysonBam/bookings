@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom'
 import { useTheme } from '@mui/material/styles'
 import { styles as makeStyles } from './styles'
 import logo from '../../assets/logo.svg'
-import loginBg from '../../assets/login-bg.svg'
 
 export default function LoginPage() {
   const navigate = useNavigate()
