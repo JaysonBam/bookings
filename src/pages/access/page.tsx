@@ -18,7 +18,12 @@ import {
   Modal,
   Stack,
   Alert,
-  CircularProgress
+  CircularProgress,
+  useMediaQuery,
+  Card,
+  CardContent,
+  CardActions,
+  Divider
 } from '@mui/material'
 import Header from '../../components/header'
 import DeleteIcon from '@mui/icons-material/DeleteOutlined'
@@ -40,6 +45,7 @@ type Profile = {
 
 export default function AccessPage() {
   const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const styles = makeStyles(theme)
   
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -132,25 +138,72 @@ export default function AccessPage() {
     }
   }
 
-  return (
-    <Box sx={styles.root}>
-      <Box sx={styles.header}>
-        <Box>
-            <Header title="User Management" />
-          <Typography variant="body1" sx={styles.subtitle}>
-            Manage user access and permissions for the application
+  const renderMobileView = () => (
+    <Stack spacing={2}>
+      {profiles.map((profile) => (
+        <Card key={profile.email} elevation={0} sx={{ border: `1px solid ${theme.palette.divider}` }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
+                <Avatar 
+                    src={profile.profile_url || undefined} 
+                    alt={profile.full_name || ''} 
+                    imgProps={{ referrerPolicy: 'no-referrer' }}
+                >
+                {(profile.full_name || profile.email)[0].toUpperCase()}
+                </Avatar>
+                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle1" noWrap sx={{ fontWeight: 600 }}>
+                        {profile.full_name || 'Unknown Name'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" noWrap display="block">
+                        {profile.email}
+                    </Typography>
+                </Box>
+                <Chip 
+                    label={profile.status} 
+                    size="small" 
+                    color={profile.status === 'active' ? 'success' : 'default'}
+                    variant={profile.status === 'active' ? 'filled' : 'outlined'}
+                />
+            </Box>
+            <Divider sx={{ mb: 2 }} />
+            <Stack spacing={1}>
+                {['settings', 'analytics', 'authorisation'].map((permission) => (
+                    <Box key={permission} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                            {permission === 'authorisation' ? 'Access' : permission}
+                        </Typography>
+                        <Switch 
+                            size="small"
+                            checked={profile[permission as keyof Profile] as boolean} 
+                            onChange={() => handleToggle(profile.email, permission as any, profile[permission as keyof Profile] as boolean)}
+                        />
+                    </Box>
+                ))}
+            </Stack>
+          </CardContent>
+          <CardActions sx={{ justifyContent: 'flex-end', pt: 0, pb: 2, px: 2 }}>
+            <Button 
+                size="small" 
+                color="error" 
+                startIcon={<DeleteIcon />}
+                onClick={() => handleDelete(profile.email)}
+            >
+                Remove User
+            </Button>
+          </CardActions>
+        </Card>
+      ))}
+      {profiles.length === 0 && (
+          <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
+              No users found
           </Typography>
-        </Box>
-        <Button 
-          variant="contained" 
-          startIcon={<AddIcon />}
-          onClick={() => setOpenModal(true)}
-        >
-          Add User
-        </Button>
-      </Box>
+      )}
+    </Stack>
+  )
 
-      <TableContainer component={Paper} elevation={0} sx={styles.tableContainer}>
+  const renderDesktopView = () => (
+    <TableContainer component={Paper} elevation={0} sx={styles.tableContainer}>
         <Table>
           <TableHead>
             <TableRow>
@@ -163,13 +216,7 @@ export default function AccessPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {loading ? (
-               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
-                    <CircularProgress size={30} />
-                </TableCell>
-               </TableRow>
-            ) : profiles.map((profile) => (
+            {profiles.map((profile) => (
               <TableRow key={profile.email} hover>
                 <TableCell>
                   <Box sx={styles.userCell}>
@@ -264,6 +311,32 @@ export default function AccessPage() {
           </TableBody>
         </Table>
       </TableContainer>
+  )
+
+  return (
+    <Box sx={styles.root}>
+      <Box sx={styles.header}>
+        <Box>
+            <Header title="User Management" />
+          <Typography variant="body1" sx={styles.subtitle}>
+            Manage user access and permissions for the application
+          </Typography>
+        </Box>
+        <Button 
+          variant="contained" 
+          startIcon={<AddIcon />}
+          onClick={() => setOpenModal(true)}
+          fullWidth={isMobile}
+        >
+          Add User
+        </Button>
+      </Box>
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+            <CircularProgress />
+        </Box>
+      ) : isMobile ? renderMobileView() : renderDesktopView()}
 
       <Modal
         open={openModal}

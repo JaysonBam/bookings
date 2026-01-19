@@ -3,12 +3,21 @@ import { Theme } from '@mui/material/styles';
 export const styles = (theme: Theme) => ({
   root: {
     padding: theme.spacing(3),
+    [theme.breakpoints.down('sm')]: {
+      padding: theme.spacing(2),
+    },
   },
   header: {
     marginBottom: theme.spacing(4),
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    [theme.breakpoints.down('sm')]: {
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      gap: theme.spacing(2),
+      marginBottom: theme.spacing(2),
+    },
   },
   title: {
     fontWeight: 700,
@@ -23,6 +32,10 @@ export const styles = (theme: Theme) => ({
     borderRadius: theme.shape.borderRadius,
     border: `1px solid ${theme.palette.divider}`,
     overflow: 'hidden',
+    // Remove overflowing content on mobile, rely on responsive table techniques if needed
+    [theme.breakpoints.down('sm')]: {
+      marginTop: theme.spacing(2),
+    },
   },
   bgOverlay: {
     position: 'absolute',
@@ -63,6 +76,7 @@ export const styles = (theme: Theme) => ({
     left: '50%',
     transform: 'translate(-50%, -50%)',
     width: 400,
+    maxWidth: '90%',
     bgcolor: 'background.paper',
     boxShadow: 24,
     p: 4,
