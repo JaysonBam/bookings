@@ -29,6 +29,9 @@ import { useLayout } from './LayoutContext'
 type User = {
   name: string
   avatarUrl?: string
+  authorisation?: boolean
+  analytics?: boolean
+  settings?: boolean
 }
 
 type Props = {
@@ -60,6 +63,26 @@ export default function Sidebar({
     navigate('/login')
   }
 
+  const menuItems = [
+    { label: 'Bookings', path: '/bookings', icon: <CalendarMonthIcon /> },
+    { label: 'Access', path: '/access', icon: <KeyIcon />, protected: 'authorisation' },
+    { label: 'Bug', path: '/bug', icon: <BugReportIcon /> },
+    { label: 'Document', path: '/document', icon: <DescriptionIcon /> },
+    { label: 'Maintenance', path: '/maintenance', icon: <BuildIcon /> },
+    { label: 'Report', path: '/report', icon: <AssessmentIcon />, protected: 'analytics' },
+    { label: 'Settings', path: '/settings', icon: <SettingsIcon />, protected: 'settings' },
+  ]
+
+  const filteredItems = menuItems.filter((item) => {
+    if (item.protected) {
+      // If currentUser is not yet loaded, hide protected items or show them?
+      // Requirement: "if they don't have access to it... take away on the side panel"
+      // So default to hidden if user not loaded or permission is false
+      return currentUser?.[item.protected as keyof User] === true
+    }
+    return true
+  })
+
   const DrawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Toolbar sx={{ display: 'flex', alignItems: 'center', px: [2] }}>
@@ -81,7 +104,11 @@ export default function Sidebar({
       <Divider />
 
       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Avatar src={currentUser?.avatarUrl} sx={{ width: 40, height: 40, border: '2px solid' }} />
+        <Avatar 
+          src={currentUser?.avatarUrl || undefined} 
+          imgProps={{ referrerPolicy: 'no-referrer' }}
+          sx={{ width: 40, height: 40, border: '2px solid' }} 
+        />
         <Typography sx={{ fontWeight: 600, fontSize: '1rem' }} noWrap>
           {currentUser?.name ?? 'User'}
         </Typography>
@@ -90,15 +117,7 @@ export default function Sidebar({
       <Divider />
 
       <List sx={{ flexGrow: 1, pt: 2 }}>
-        {[
-          { label: 'Bookings', path: '/bookings', icon: <CalendarMonthIcon /> },
-          { label: 'Access', path: '/access', icon: <KeyIcon /> },
-          { label: 'Bug', path: '/bug', icon: <BugReportIcon /> },
-          { label: 'Document', path: '/document', icon: <DescriptionIcon /> },
-          { label: 'Maintenance', path: '/maintenance', icon: <BuildIcon /> },
-          { label: 'Report', path: '/report', icon: <AssessmentIcon /> },
-          { label: 'Settings', path: '/settings', icon: <SettingsIcon /> },
-        ].map((item) => (
+        {filteredItems.map((item) => (
           <ListItem key={item.path} disablePadding sx={{ display: 'block' }}>
             <ListItemButton selected={location.pathname === item.path} onClick={() => navigate(item.path)} sx={{ px: 2.5 }}>
               <ListItemIcon sx={{ minWidth: 0, mr: 3 }}>
