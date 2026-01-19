@@ -9,7 +9,7 @@ type Props = {
 
 export default function Header({ title = 'Dashboard Overview' }: Props) {
   const theme = useTheme()
-  const { open: finalOpen, onToggle: finalOnToggle, drawerWidth } = useLayout()
+  const { open: finalOpen, onToggle: finalOnToggle, drawerWidth, headerContent } = useLayout()
 
   return (
     <AppBar
@@ -40,9 +40,13 @@ export default function Header({ title = 'Dashboard Overview' }: Props) {
         >
           <MenuIcon />
         </IconButton>
-        <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 600 }}>
-          {title}
-        </Typography>
+        {headerContent ? (
+          headerContent
+        ) : (
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 600 }}>
+            {title}
+          </Typography>
+        )}
       </Toolbar>
     </AppBar>
   )

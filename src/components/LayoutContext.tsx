@@ -4,20 +4,26 @@ type LayoutContextType = {
   open: boolean
   mobileOpen: boolean
   drawerWidth: number
+  headerContent: React.ReactNode
   onToggle: () => void
+  setHeaderContent: (content: React.ReactNode) => void
 }
 
 const LayoutContext = createContext<LayoutContextType | undefined>(undefined)
 
 export function LayoutProvider({ children, initialOpen = false, initialDrawerWidth = 280 }: { children: React.ReactNode; initialOpen?: boolean; initialDrawerWidth?: number }) {
   const [open, setOpen] = useState(initialOpen)
+  const [headerContent, setHeaderContent] = useState<React.ReactNode>(null)
+  
   const onToggle = () => setOpen((s) => !s)
 
   const value: LayoutContextType = {
     open,
     mobileOpen: false,
     drawerWidth: initialDrawerWidth,
+    headerContent,
     onToggle,
+    setHeaderContent,
   }
 
   return <LayoutContext.Provider value={value}>{children}</LayoutContext.Provider>
