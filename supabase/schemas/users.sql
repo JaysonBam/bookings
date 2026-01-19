@@ -12,7 +12,11 @@ create table public.profiles (
 
   status public.profile_status not null default 'pending',
 
-  primary key (email)
+  primary key (email),
+
+  settings boolean not null default false,
+  authorisation boolean not null default false,
+  analytics boolean not null default false
 );
 
 alter table public.profiles enable row level security;
