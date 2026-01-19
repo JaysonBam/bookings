@@ -1,14 +1,15 @@
 import { Box, Button, Container, Paper, Typography, Stack } from '@mui/material';
 import GoogleColorIcon from './components/GoogleIcon'
-import { useNavigate } from 'react-router-dom'
 import { useTheme } from '@mui/material/styles'
 import { styles as makeStyles } from './styles'
 import logo from '../../assets/logo.svg'
+import { supabase } from '../../lib/supabaseClient'
+import { useState } from 'react'
 
 export default function LoginPage() {
-  const navigate = useNavigate()
   const theme = useTheme()
   const styles = makeStyles(theme)
+  const [loading, setLoading] = useState(false)
 
   return (
     <Box sx={styles.root}>
@@ -40,10 +41,25 @@ export default function LoginPage() {
               variant="outlined"
               size="large"
               sx={styles.googleBtn}
-              onClick={() => navigate('/bookings')}
+              onClick={async () => {
+                try {
+                  setLoading(true)
+                  await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                      redirectTo: `${window.location.origin}/bookings`,
+                    },
+                  })
+                } catch (err) {
+                  // eslint-disable-next-line no-console
+                  console.error('Google sign-in error', err)
+                  setLoading(false)
+                }
+              }}
               startIcon={<GoogleColorIcon />}
+              disabled={loading}
             >
-              Sign in with Google
+              {loading ? 'Signing in…' : 'Sign in with Google'}
             </Button>
           </Stack>
         </Paper>
