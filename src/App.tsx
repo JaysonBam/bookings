@@ -55,6 +55,12 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
             analytics: profile.analytics,
           })
         }
+      } else {
+         // Fallback if no db profile found yet but session has info? (Should rarely happen due to login logic)
+         setCurrentUser({
+             name: session.user.user_metadata.full_name || 'User',
+             avatarUrl: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || undefined,
+         })
       }
       setLoading(false)
     }

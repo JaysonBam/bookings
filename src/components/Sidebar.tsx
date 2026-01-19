@@ -104,7 +104,11 @@ export default function Sidebar({
       <Divider />
 
       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Avatar src={currentUser?.avatarUrl} sx={{ width: 40, height: 40, border: '2px solid' }} />
+        <Avatar 
+          src={currentUser?.avatarUrl || undefined} 
+          imgProps={{ referrerPolicy: 'no-referrer' }}
+          sx={{ width: 40, height: 40, border: '2px solid' }} 
+        />
         <Typography sx={{ fontWeight: 600, fontSize: '1rem' }} noWrap>
           {currentUser?.name ?? 'User'}
         </Typography>

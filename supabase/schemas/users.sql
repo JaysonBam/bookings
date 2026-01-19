@@ -21,21 +21,67 @@ create table public.profiles (
 
 alter table public.profiles enable row level security;
 
--- Allow authenticated users to read their profile when their JWT email matches the profile.email
--- This enables the client-only flow to lookup a profile by email before the profile.id
--- is populated. It only permits access for the authenticated user whose JWT contains
--- the matching email claim.
-CREATE POLICY select_profile_by_email_authenticated
+-- HELPER FUNCTION TO PREVENT RLS RECURSION
+-- This function runs with "security definer" privileges, bypassing RLS checks
+-- when reading theprofiles table to check for authorisation status.
+CREATE OR REPLACE FUNCTION public.check_user_is_authorised()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.profiles
+    WHERE email = (auth.jwt() ->> 'email')
+    AND authorisation = true
+  );
+END;
+$$;
+
+-- BASIC SELF-ACCESS POLICIES (Required for login)
+-- 1. Read own profile
+CREATE POLICY select_profile_own
   ON public.profiles
   FOR SELECT
   TO authenticated
   USING (email = (auth.jwt() ->> 'email'));
 
--- Allow authenticated users to update their profile row (set `id` and `status`) when
--- the JWT email matches. `WITH CHECK` ensures updates don't change the email to a different value.
-CREATE POLICY update_profile_by_email_authenticated
+-- 2. Update own profile (e.g. for login logic to set ID/status)
+CREATE POLICY update_profile_own
   ON public.profiles
   FOR UPDATE
   TO authenticated
   USING (email = (auth.jwt() ->> 'email'))
   WITH CHECK (email = (auth.jwt() ->> 'email'));
+
+-- ADMIN ACCESS POLICIES (Required for Access Page)
+-- 3. Read ALL profiles if user is authorized.
+CREATE POLICY select_profiles_admin
+  ON public.profiles
+  FOR SELECT
+  TO authenticated
+  USING (check_user_is_authorised());
+
+-- 4. Insert new profiles if authorized
+CREATE POLICY insert_profiles_admin
+  ON public.profiles
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (check_user_is_authorised());
+
+-- 5. Update ANY profile if authorized
+CREATE POLICY update_profiles_admin
+  ON public.profiles
+  FOR UPDATE
+  TO authenticated
+  USING (check_user_is_authorised())
+  WITH CHECK (check_user_is_authorised());
+
+-- 6. Delete profiles if authorized
+CREATE POLICY delete_profiles_admin
+  ON public.profiles
+  FOR DELETE
+  TO authenticated
+  USING (check_user_is_authorised());
