@@ -1,7 +1,8 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Box, Toolbar, CssBaseline } from '@mui/material'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
+import { useEffect, useState } from 'react'
 
 import LoginPage from './pages/login/page'
 import BookingsPage from './pages/bookings/page'
@@ -14,12 +15,54 @@ import SettingsPage from './pages/settings/page'
 
 import Sidebar from './components/Sidebar'
 import { LayoutProvider, useLayout } from './components/LayoutContext'
+import { supabase } from './lib/supabaseClient'
 
 function Layout({ children }: { children: React.ReactNode }) {
   const { open, onToggle, drawerWidth } = useLayout()
+  const navigate = useNavigate()
+  const [currentUser, setCurrentUser] = useState<{ name: string; avatarUrl?: string } | undefined>(undefined)
+
+  useEffect(() => {
+    const getProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        navigate('/login')
+        return
+      }
+
+      if (session.user.email) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, profile_url')
+          .eq('email', session.user.email)
+          .single()
+
+        if (profile) {
+          setCurrentUser({
+            name: profile.full_name || session.user.user_metadata.full_name || 'User',
+            avatarUrl: profile.profile_url || session.user.user_metadata.avatar_url || session.user.user_metadata.picture || undefined,
+          })
+        }
+      }
+    }
+
+    getProfile()
+  }, [navigate])
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    navigate('/login')
+  }
+
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', overflow: 'hidden', width: '100%' }}>
-      <Sidebar drawerWidth={drawerWidth} open={open} onToggle={onToggle} />
+      <Sidebar 
+        drawerWidth={drawerWidth} 
+        open={open} 
+        onToggle={onToggle} 
+        onSignOut={handleSignOut}
+        currentUser={currentUser}
+      />
       <Box
         component="main"
         sx={{
