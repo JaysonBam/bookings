@@ -62,7 +62,6 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
   const [openingHours, setOpeningHours] = useState<{ start: string; end: string }>(openingHoursProp ?? { start: "06:00", end: "21:00" });
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const channelRefRef = useRef<any>(null);
   const bookingsRef = useRef<Booking[]>([]);
   const [hoveredCell, setHoveredCell] = useState<{ roomId: string | null; timeSlotIso: string | null }>({ roomId: null, timeSlotIso: null });
   const { currentTime } = useNow();
