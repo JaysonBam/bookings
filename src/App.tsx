@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { Box, Toolbar, CssBaseline } from '@mui/material'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
@@ -14,6 +14,7 @@ import ReportPage from './pages/report/page'
 import SettingsPage from './pages/settings/page'
 
 import Sidebar from './components/Sidebar'
+import Header from './components/header'
 import { LayoutProvider, useLayout } from './components/LayoutContext'
 import { supabase } from './lib/supabaseClient'
 
@@ -28,6 +29,7 @@ type User = {
 function Layout({ children, requiredPermission }: { children: React.ReactNode, requiredPermission?: keyof User }) {
   const { open, onToggle, drawerWidth } = useLayout()
   const navigate = useNavigate()
+  const location = useLocation()
   const [currentUser, setCurrentUser] = useState<User | undefined>(undefined)
   const [loading, setLoading] = useState(true)
 
@@ -83,7 +85,7 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
   }
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', overflow: 'hidden', width: '100%' }}>
+    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', width: '100%' }}>
       <Sidebar 
         drawerWidth={drawerWidth} 
         open={open} 
@@ -91,21 +93,31 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
         onSignOut={handleSignOut}
         currentUser={currentUser}
       />
+      <Header />
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
+          p: location.pathname === '/bookings' ? 0 : 3,
           ml: open ? `${drawerWidth}px` : 0,
           width: open ? `calc(100% - ${drawerWidth}px)` : '100%',
           boxSizing: 'border-box',
           display: 'flex',
           flexDirection: 'column',
+          height: '100vh', // Explicitly strict height
           overflow: 'hidden',
         }}
       >
         <Toolbar />
-        <Box sx={{ flex: 1, overflow: 'auto' }}>{children}</Box>
+        <Box sx={{ 
+          flex: 1, 
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0, // CRITICAL: allows flex child to shrink below content size
+          overflow: location.pathname === '/bookings' ? 'hidden' : 'auto' 
+        }}>
+          {children}
+        </Box>
       </Box>
     </Box>
   )

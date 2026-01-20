@@ -1,0 +1,289 @@
+import React, { useMemo, useEffect, useState, useRef, useCallback } from "react";
+import { format, addMinutes } from "date-fns";
+import { supabase } from "../../../lib/supabaseClient";
+import BookingCell from "./BookingCell";
+import { useNow } from "../context/NowContext";
+import { CircularProgress, Box, Table, TableBody, TableRow, TableHead } from "@mui/material";
+import { StyledTableContainer, StyledHeaderCell, StyledCornerCell, StyledTimeCell } from "../styles";
+
+interface Room {
+  id: string;
+  name: string;
+  capacity?: number | null;
+  is_available?: boolean | null;
+  dynamic_labels?: string[] | null;
+}
+
+interface Booking {
+  id: string;
+  room_id: string;
+  start_time: string; // ISO
+  end_time: string;   // ISO
+  title?: string;
+  color?: string;
+  booked_by?: string;
+  course_id?: number | null;
+  course_name?: string | null;
+  course?: { id: number; name: string; color_hex?: string } | null;
+  state?: 'Active' | 'Reserved' | 'Ended' | undefined;
+  booking_day?: string;
+}
+
+interface BookingGridProps {
+  selectedDate: Date;
+  rooms?: Room[];
+  bookings?: Booking[];
+  openingHours?: { start: string; end: string };
+  onCellClick: (roomId: string, timeSlotIso: string) => void;
+  onBookingClick: (bookingId: string) => void;
+  onQuickAction?: (bookingId: string, action: 'activate' | 'end') => void;
+  highlightedBookingId?: string | null;
+  refreshTrigger?: number;
+}
+
+const defaultRooms: Room[] = [
+  { id: "r1", name: "Room 1" },
+  { id: "r2", name: "Room 2" },
+  { id: "r3", name: "Room 3" },
+];
+
+export const BookingGrid: React.FC<BookingGridProps> = ({
+  selectedDate,
+  rooms: roomsProp,
+  bookings: bookingsProp,
+  openingHours: openingHoursProp,
+  onCellClick,
+  onBookingClick,
+  onQuickAction,
+  highlightedBookingId,
+  refreshTrigger = 0,
+}) => {
+  const [rooms, setRooms] = useState<Room[]>(roomsProp ?? defaultRooms);
+  const [openingHours, setOpeningHours] = useState<{ start: string; end: string }>(openingHoursProp ?? { start: "06:00", end: "21:00" });
+  const [loading, setLoading] = useState(true);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const bookingsRef = useRef<Booking[]>([]);
+  const [hoveredCell, setHoveredCell] = useState<{ roomId: string | null; timeSlotIso: string | null }>({ roomId: null, timeSlotIso: null });
+  const { currentTime } = useNow();
+
+  useEffect(() => {
+    bookingsRef.current = bookings;
+  }, [bookings]);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const { data: roomsData, error: roomsErr } = await supabase.from("rooms").select("*");
+        if (roomsErr) {
+          console.error("Error loading rooms:", roomsErr);
+        } else if (roomsData) {
+          const fetched = (roomsData as any[])
+            .filter((r) => r.is_available === false ? false : true)
+            .map((r) => ({ id: String(r.id), name: r.name, capacity: r.capacity, is_available: r.is_available, dynamic_labels: r.dynamic_labels }));
+          
+          const roomRegex = /^Room\s*(\d+)$/i;
+          const numericRooms = fetched
+            .map((r) => ({ r, m: (r.name.match(roomRegex) || [])[1] }))
+            .filter((x) => x.m)
+            .map((x) => ({ room: x.r, num: parseInt(x.m, 10) }))
+            .sort((a, b) => a.num - b.num)
+            .map((x) => x.room);
+          const otherRooms = fetched.filter((r) => !roomRegex.test(r.name)).slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+          setRooms([...numericRooms, ...otherRooms]);
+        }
+
+        const { data: hoursData } = await supabase.from("settings").select("value").eq("key", "operation_hours").maybeSingle();
+        if (hoursData && hoursData.value) {
+          const val = hoursData.value as any;
+          const start = val.start ?? val.open ?? "06:00";
+          const end = val.end ?? val.close ?? "21:00";
+          setOpeningHours({ start, end });
+        }
+      } catch (err) {
+        console.error("BookingGrid load error", err);
+      } finally {
+        
+      }
+    };
+
+    if (roomsProp && roomsProp.length > 0) setRooms(roomsProp as any);
+    if (openingHoursProp) setOpeningHours(openingHoursProp);
+    
+    if ((!roomsProp || roomsProp.length === 0) || !openingHoursProp) {
+        load();
+    }
+  }, [roomsProp, openingHoursProp]);
+
+  const fetchBookings = useCallback(async (dateStr: string) => {
+      try {
+        console.log("Fetching bookings for:", dateStr);
+        const { data: bookingsData, error: bookingsErr } = await supabase
+          .from("bookings")
+          .select(`*, courses(id, name, color_hex)`)
+          .eq("booking_day", dateStr);
+        if (bookingsErr) { console.error("Error loading bookings:", bookingsErr); setLoading(false); return; }
+        console.log("Fetched bookings:", bookingsData?.length);
+        if (bookingsData) {
+          const mapped = (bookingsData as any[]).map((b) => {
+            const startIso = `${b.booking_day}T${(b.start_time || "").slice(0,8)}`;
+            const endIso = `${b.booking_day}T${(b.end_time || "").slice(0,8)}`;
+            return {
+              id: String(b.id),
+              room_id: String(b.room_id),
+              start_time: startIso,
+              end_time: endIso,
+              booked_by: b.booked_by,
+              course_id: b.course_id ?? null,
+              course_name: b.course_name ?? null,
+              course: b.courses ?? null,
+              state: b.state,
+              booking_day: b.booking_day,
+            } as Booking;
+          });
+          setBookings(mapped);
+        }
+        setLoading(false);
+      } catch (e) { 
+          console.error("Error fetching bookings", e); 
+          setLoading(false);
+      }
+  }, []);
+
+  useEffect(() => {
+    if (bookingsProp && bookingsProp.length > 0) {
+      setBookings(bookingsProp as any);
+      setLoading(false);
+    } else {
+      fetchBookings(format(selectedDate, "yyyy-MM-dd"));
+    }
+  }, [selectedDate, bookingsProp, refreshTrigger, fetchBookings]); 
+
+  useEffect(() => {
+    if (bookingsProp && bookingsProp.length > 0) return;
+
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    
+    const channel = supabase.channel(`bookings_realtime_${dateStr}_${Date.now()}`);
+    channel
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'bookings' },
+        (payload: any) => {
+          console.log('Realtime update received:', payload);
+          if (payload.new && payload.new.booking_day === dateStr) {
+               fetchBookings(dateStr);
+          } else if (payload.old) {
+               fetchBookings(dateStr);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log(`Realtime subscription status for ${dateStr}:`, status);
+        if (status === 'CLOSED') console.log(`Realtime subscription status for ${dateStr}: CLOSED`);
+      });
+
+    return () => {
+        channel.unsubscribe();
+    };
+  }, [selectedDate, bookingsProp, fetchBookings]);
+
+  const timeSlots = useMemo(() => {
+    const [sh, sm] = openingHours.start.split(":").map(Number);
+    const [eh, em] = openingHours.end.split(":").map(Number);
+    const start = new Date(selectedDate);
+    start.setHours(sh, sm, 0, 0);
+    const end = new Date(selectedDate);
+    end.setHours(eh, em, 0, 0);
+    if (end <= start) end.setDate(end.getDate() + 1);
+
+    const slots: Date[] = [];
+    let cur = new Date(start);
+    while (cur < end) {
+      slots.push(new Date(cur));
+      cur = addMinutes(cur, 30);
+    }
+    return slots;
+  }, [selectedDate, openingHours]);
+
+  const getBookingForCell = React.useCallback((roomId: string, slot: Date) => {
+    return bookings.find((b) => {
+      const s = new Date(b.start_time);
+      const e = new Date(b.end_time);
+      return b.room_id === roomId && slot >= s && slot < e;
+    }) || null;
+  }, [bookings]);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <StyledTableContainer>
+      <Table stickyHeader padding="none" sx={{ minWidth: 'max-content' }}>
+        <TableHead>
+          <TableRow>
+            <StyledCornerCell></StyledCornerCell>
+            {rooms.map((r) => (
+              <StyledHeaderCell 
+                key={r.id} 
+                sx={{ 
+                    backgroundColor: hoveredCell.roomId === r.id ? 'action.hover' : 'background.paper',
+                    color: hoveredCell.roomId === r.id ? 'primary.main' : 'inherit'
+                }}
+              >
+                <div style={{ fontWeight: 'bold' }}>{r.name}</div>
+                {r.dynamic_labels && r.dynamic_labels.length > 0 && (
+                  <div style={{ fontSize: '0.75rem', fontWeight: 'normal', marginTop: '2px' }}>
+                    {r.dynamic_labels.map(l => l.split(' ').pop()).join(' ')}
+                  </div>
+                )}
+              </StyledHeaderCell>
+            ))}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {timeSlots.map((slot) => {
+            const isCurrentRow = currentTime ? slot <= currentTime && currentTime < addMinutes(slot, 30) : false;
+            return (
+            <TableRow key={slot.toISOString()}>
+              <StyledTimeCell 
+                sx={{ 
+                    backgroundColor: hoveredCell.timeSlotIso === slot.toISOString() ? 'action.hover' : isCurrentRow ? 'action.selected' : 'background.paper',
+                    color: hoveredCell.timeSlotIso === slot.toISOString() ? 'primary.main' : isCurrentRow ? 'secondary.main' : 'inherit',
+                    fontWeight: isCurrentRow ? 'bold' : 'normal'
+                }}
+              >
+                {format(slot, "HH:mm")}
+              </StyledTimeCell>
+              {rooms.map((room) => {
+                const booking = getBookingForCell(room.id, slot);
+                return (
+                  <BookingCell
+                    key={`${room.id}-${slot.toISOString()}`}
+                    booking={booking}
+                    roomId={room.id}
+                    timeSlot={slot}
+                    onCellClick={onCellClick}
+                    onBookingClick={onBookingClick}
+                    onQuickAction={onQuickAction}
+                    onHover={(isHovering) => setHoveredCell(isHovering ? { roomId: room.id, timeSlotIso: slot.toISOString() } : { roomId: null, timeSlotIso: null })}
+                    isCurrentRow={isCurrentRow}
+                    isHighlighted={booking?.id === highlightedBookingId}
+                  />
+                );
+              })}
+            </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </StyledTableContainer>
+  );
+};
+
+export default BookingGrid;
