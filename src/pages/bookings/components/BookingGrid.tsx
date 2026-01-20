@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState, useRef } from "react";
+import React, { useMemo, useEffect, useState, useRef, useCallback } from "react";
 import { format, addMinutes } from "date-fns";
 import { supabase } from "../../../lib/supabaseClient";
 import BookingCell from "./BookingCell";
@@ -104,18 +104,26 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
       } catch (err) {
         console.error("BookingGrid load error", err);
       } finally {
-        setLoading(false);
+        
       }
     };
 
-    const fetchBookings = async (dateStr: string) => {
+    if (roomsProp && roomsProp.length > 0) setRooms(roomsProp as any);
+    if (openingHoursProp) setOpeningHours(openingHoursProp);
+    
+    if ((!roomsProp || roomsProp.length === 0) || !openingHoursProp) {
+        load();
+    }
+  }, [roomsProp, openingHoursProp]);
+
+  const fetchBookings = useCallback(async (dateStr: string) => {
       try {
         console.log("Fetching bookings for:", dateStr);
         const { data: bookingsData, error: bookingsErr } = await supabase
           .from("bookings")
           .select(`*, courses(id, name, color_hex)`)
           .eq("booking_day", dateStr);
-        if (bookingsErr) { console.error("Error loading bookings:", bookingsErr); return; }
+        if (bookingsErr) { console.error("Error loading bookings:", bookingsErr); setLoading(false); return; }
         console.log("Fetched bookings:", bookingsData?.length);
         if (bookingsData) {
           const mapped = (bookingsData as any[]).map((b) => {
@@ -136,54 +144,50 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
           });
           setBookings(mapped);
         }
-      } catch (e) { console.error("Error fetching bookings", e); }
-    };
+        setLoading(false);
+      } catch (e) { 
+          console.error("Error fetching bookings", e); 
+          setLoading(false);
+      }
+  }, []);
 
-    if (roomsProp && roomsProp.length > 0) setRooms(roomsProp as any);
-    if (openingHoursProp) setOpeningHours(openingHoursProp);
+  useEffect(() => {
     if (bookingsProp && bookingsProp.length > 0) {
       setBookings(bookingsProp as any);
       setLoading(false);
     } else {
-      const init = async () => {
-        await load();
-        const dateStr = format(selectedDate, "yyyy-MM-dd");
-        await fetchBookings(dateStr);
-
-        try { if (channelRefRef.current) { await channelRefRef.current.unsubscribe(); channelRefRef.current = null; } } catch (e) {}
-
-        const channel = supabase.channel(`bookings_realtime_${dateStr}_${Date.now()}`);
-        
-        channel
-          .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'bookings' },
-            (payload: any) => {
-              console.log('Realtime update received:', payload);
-              // Check if the change is relevant to the current date
-              if (payload.new && payload.new.booking_day === dateStr) {
-                  fetchBookings(dateStr);
-              } else if (payload.old) {
-                   // For deletes or updates where date changed, refetch if it was in our list
-                   // Safest is to just refetch if we aren't sure
-                   fetchBookings(dateStr);
-              }
-            }
-          )
-          .subscribe((status) => {
-            console.log(`Realtime subscription status for ${dateStr}:`, status);
-          });
-
-        channelRefRef.current = channel;
-      };
-      init();
-      return () => { 
-          if (channelRefRef.current) {
-              channelRefRef.current.unsubscribe(); 
-          }
-      };
+      fetchBookings(format(selectedDate, "yyyy-MM-dd"));
     }
-  }, [roomsProp, openingHoursProp, bookingsProp, selectedDate, refreshTrigger]);
+  }, [selectedDate, bookingsProp, refreshTrigger, fetchBookings]); 
+
+  useEffect(() => {
+    if (bookingsProp && bookingsProp.length > 0) return;
+
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    
+    const channel = supabase.channel(`bookings_realtime_${dateStr}_${Date.now()}`);
+    channel
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'bookings' },
+        (payload: any) => {
+          console.log('Realtime update received:', payload);
+          if (payload.new && payload.new.booking_day === dateStr) {
+               fetchBookings(dateStr);
+          } else if (payload.old) {
+               fetchBookings(dateStr);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log(`Realtime subscription status for ${dateStr}:`, status);
+        if (status === 'CLOSED') console.log(`Realtime subscription status for ${dateStr}: CLOSED`);
+      });
+
+    return () => {
+        channel.unsubscribe();
+    };
+  }, [selectedDate, bookingsProp, fetchBookings]);
 
   const timeSlots = useMemo(() => {
     const [sh, sm] = openingHours.start.split(":").map(Number);

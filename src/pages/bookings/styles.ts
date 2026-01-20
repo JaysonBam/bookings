@@ -77,7 +77,9 @@ export const StyledCornerCell = styled(TableCell)(({ theme }) => ({
   borderRight: `1px solid ${theme.palette.divider}`,
 }));
 
-export const StyledBookingCell = styled(TableCell)<{ 
+export const StyledBookingCell = styled(TableCell, {
+    shouldForwardProp: (prop) => prop !== 'bgColor' && prop !== 'textColor' && prop !== 'isHighlighted' && prop !== 'state',
+})<{ 
     bgColor?: string; 
     textColor?: string; 
     isHighlighted?: boolean;
