@@ -1,19 +1,68 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { format } from "date-fns";
 import { IconButton, TextField, Card, CardContent, Typography, Box, Chip, CircularProgress } from '@mui/material';
 import { Search as SearchIcon, Close as CloseIcon } from '@mui/icons-material';
+import { supabase } from "../../../lib/supabaseClient";
 import { StyledSearchPanel } from "../styles";
-import { Booking } from "../hooks/useBookings";
 
 interface SearchPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  bookings: Booking[];
-  loading?: boolean;
+  selectedDate: Date;
   onBookingSelect?: (bookingId: string) => void;
 }
 
-export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, bookings, loading = false, onBookingSelect }) => {
+interface Booking {
+  id: number;
+  room_id: number;
+  start_time: string;
+  end_time: string;
+  state: string;
+  student_numbers: string;
+  booked_by: string;
+  rooms: {
+    name: string;
+  };
+}
+
+export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selectedDate, onBookingSelect }) => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchBookings();
+    }
+  }, [isOpen, selectedDate]);
+
+  const fetchBookings = async () => {
+    setLoading(true);
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    
+    const { data, error } = await supabase
+      .from("bookings")
+      .select(`
+        id,
+        room_id,
+        start_time,
+        end_time,
+        state,
+        student_numbers,
+        booked_by,
+        rooms (
+          name
+        )
+      `)
+      .eq("booking_day", dateStr);
+
+    if (error) {
+      console.error("Error fetching bookings:", error);
+    } else {
+      setBookings(data as any);
+    }
+    setLoading(false);
+  };
 
   const filteredBookings = bookings.filter((booking) => {
     if (!searchQuery) return true;
@@ -61,7 +110,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, booki
               >
                 <CardContent sx={{ p: '12px !important' }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="subtitle2" fontWeight="bold">{(booking as any).rooms?.name || "Unknown Room"}</Typography>
+                    <Typography variant="subtitle2" fontWeight="bold">{booking.rooms?.name || "Unknown Room"}</Typography>
                     <Chip 
                         label={booking.state} 
                         size="small" 
@@ -70,7 +119,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, booki
                     />
                   </Box>
                   <Typography variant="body2" color="text.secondary">
-                    {booking.start_time.slice(11, 16)} - {booking.end_time.slice(11, 16)}
+                    {booking.start_time.slice(0, 5)} - {booking.end_time.slice(0, 5)}
                   </Typography>
                   <Typography variant="body2" noWrap title={booking.student_numbers}>
                     {booking.student_numbers || booking.booked_by}

@@ -2,8 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { parseISO } from "date-fns";
 import { Button, Box, Typography } from "@mui/material";
 import { useNow } from "../context/NowContext";
-import { getBookingSoftState } from "../utils/bookingLogic";
-import { getTextColorForBackground } from "../utils/styleUtils";
+import { getBookingSoftState } from "../utils/helpers";
 import { StyledBookingCell } from "../styles";
 
 interface BookingCellProps {
@@ -31,12 +30,12 @@ interface BookingCellProps {
   onCellClick: (roomId: string, timeSlotIso: string) => void;
   onBookingClick: (bookingId: string) => void;
   onQuickAction?: (bookingId: string, action: 'activate' | 'end') => void;
-  onHover?: (roomId: string | null, timeSlotIso: string | null) => void;
+  onHover?: (isHovering: boolean) => void;
   isCurrentRow?: boolean;
   isHighlighted?: boolean;
 }
 
-const BookingCell = React.memo(({ booking, roomId, timeSlot, onCellClick, onBookingClick, onQuickAction, onHover, isCurrentRow, isHighlighted }: BookingCellProps) => {
+export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeSlot, onCellClick, onBookingClick, onQuickAction, onHover, isCurrentRow, isHighlighted }) => {
   const { currentTime } = useNow();
   const [showQuickAction, setShowQuickAction] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -49,7 +48,7 @@ const BookingCell = React.memo(({ booking, roomId, timeSlot, onCellClick, onBook
   }, [isHighlighted]);
 
   const handleMouseEnter = () => {
-    onHover?.(roomId, timeSlot.toISOString());
+    onHover?.(true);
     if (!booking || booking.state === 'Ended') return;
     hoverTimeoutRef.current = setTimeout(() => {
       setShowQuickAction(true);
@@ -57,7 +56,7 @@ const BookingCell = React.memo(({ booking, roomId, timeSlot, onCellClick, onBook
   };
 
   const handleMouseLeave = () => {
-    onHover?.(null, null);
+    onHover?.(false);
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
@@ -76,8 +75,8 @@ const BookingCell = React.memo(({ booking, roomId, timeSlot, onCellClick, onBook
     return (
       <StyledBookingCell
         onClick={() => onCellClick(roomId, timeSlot.toISOString())}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+        onMouseEnter={() => onHover?.(true)}
+        onMouseLeave={() => onHover?.(false)}
         role="button"
         tabIndex={0}
         sx={{
@@ -101,9 +100,23 @@ const BookingCell = React.memo(({ booking, roomId, timeSlot, onCellClick, onBook
   // Determine background color from course color, or fallback to blue-gray
   const bgColor = booking.course?.color_hex ?? booking.color ?? "#64748b"; // slate-500 fallback
 
-  const textColor = getTextColorForBackground(bgColor);
+  // Decide text color based on background luminance for readability
+  const getTextColor = (hex: string) => {
+    try {
+      const h = hex.replace('#','');
+      const r = parseInt(h.substring(0,2),16)/255;
+      const g = parseInt(h.substring(2,4),16)/255;
+      const b = parseInt(h.substring(4,6),16)/255;
+      const lum = 0.2126*r + 0.7152*g + 0.0722*b;
+      return lum > 0.6 ? 'black' : 'white';
+    } catch (e) {
+      return 'white';
+    }
+  };
 
-  const softState = getBookingSoftState(booking, currentTime);
+  const textColor = getTextColor(bgColor);
+
+  const softState = getBookingSoftState(booking, currentTime); // Now using the stub helper
 
   const getStatusDotColor = (state?: string) => {
     if (softState === 'late') return 'orange';
@@ -163,7 +176,6 @@ const BookingCell = React.memo(({ booking, roomId, timeSlot, onCellClick, onBook
         </Box>
     </StyledBookingCell>
   );
-});
+};
 
 export default BookingCell;
- 

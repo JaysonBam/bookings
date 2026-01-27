@@ -2,7 +2,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { Box, Toolbar, CssBaseline } from '@mui/material'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 
 import LoginPage from './pages/login/page'
 import BookingsPage from './pages/bookings/page'
@@ -16,7 +16,6 @@ import SettingsPage from './pages/settings/page'
 import Sidebar from './components/Sidebar'
 import Header from './components/header'
 import { LayoutProvider, useLayout } from './components/LayoutContext'
-import { ThemeContext } from './components/ThemeContext'
 import { supabase } from './lib/supabaseClient'
 
 type User = {
@@ -127,147 +126,16 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
 
 function App() {
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
-  
-  const [mode, setMode] = useState<'light' | 'dark' | null>(() => {
-    const savedMode = localStorage.getItem('themeMode')
-    return (savedMode === 'light' || savedMode === 'dark') ? savedMode : null
+  const theme = createTheme({
+    palette: {
+      mode: prefersDarkMode ? 'dark' : 'light',
+    },
   })
 
-  const effectiveMode = mode ?? (prefersDarkMode ? 'dark' : 'light')
-
-  const theme = useMemo(() => createTheme({
-    palette: {
-      mode: effectiveMode,
-      primary: effectiveMode === 'light' 
-        ? { main: '#1e293b', light: '#334155', dark: '#0f172a', contrastText: '#ffffff' } // Slate 800
-        : { main: '#e2e8f0', light: '#f1f5f9', dark: '#cbd5e1', contrastText: '#0f172a' }, // Slate 200
-      secondary: {
-        main: effectiveMode === 'light' ? '#64748b' : '#94a3b8', // Slate 500 / 400
-      },
-      background: effectiveMode === 'light'
-        ? { default: '#f8fafc', paper: '#ffffff' } // Slate 50
-        : { default: '#0f172a', paper: '#1e293b' }, // Slate 900 / 800
-      text: effectiveMode === 'light'
-        ? { primary: '#0f172a', secondary: '#475569' } // Slate 900 / 600
-        : { primary: '#f8fafc', secondary: '#94a3b8' }, // Slate 50 / 400
-    },
-    shape: {
-      borderRadius: 8, // reduced from 12 to prevent text cutoff in narrow containers
-    },
-    typography: {
-      fontFamily: '"Inter", "Segoe UI", "Roboto", "Helvetica", "Arial", sans-serif',
-      button: {
-        textTransform: 'none',
-        fontWeight: 600,
-      },
-      h6: {
-        fontWeight: 700,
-      },
-    },
-    components: {
-      MuiCssBaseline: {
-        styleOverrides: {
-          body: {
-            scrollbarColor: effectiveMode === 'dark' ? '#334155 #0f172a' : '#cbd5e1 #f1f5f9',
-            "&::-webkit-scrollbar, & *::-webkit-scrollbar": {
-              backgroundColor: "transparent",
-              width: "8px",
-              height: "8px",
-            },
-            "&::-webkit-scrollbar-thumb, & *::-webkit-scrollbar-thumb": {
-              borderRadius: "8px",
-              backgroundColor: effectiveMode === 'dark' ? "#334155" : "#cbd5e1", 
-              minHeight: 24,
-            },
-            "&::-webkit-scrollbar-thumb:focus, & *::-webkit-scrollbar-thumb:focus": {
-              backgroundColor: effectiveMode === 'dark' ? "#475569" : "#94a3b8",
-            },
-          }
-        }
-      },
-      MuiAppBar: {
-        defaultProps: {
-          elevation: 0,
-          color: 'inherit',
-        },
-        styleOverrides: {
-          root: {
-            backgroundColor: effectiveMode === 'light' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(30, 41, 59, 0.9)', // Slight transparency
-            backdropFilter: 'blur(8px)',
-            borderBottom: `1px solid ${effectiveMode === 'light' ? '#e2e8f0' : '#334155'}`,
-            color: effectiveMode === 'light' ? '#0f172a' : '#f8fafc',
-          },
-        },
-      },
-      MuiDrawer: {
-        styleOverrides: {
-          paper: {
-            backgroundColor: effectiveMode === 'light' ? '#ffffff' : '#1e293b',
-            borderRight: `1px solid ${effectiveMode === 'light' ? '#e2e8f0' : '#334155'}`,
-          },
-        },
-      },
-      MuiButton: {
-        defaultProps: {
-          disableElevation: true,
-        },
-        styleOverrides: {
-          root: {
-            textTransform: 'none',
-            borderRadius: 8, // consistent with shape.borderRadius
-            padding: '8px 16px',
-          },
-        },
-      },
-      MuiCard: {
-        defaultProps: {
-          elevation: 0,
-        },
-        styleOverrides: {
-          root: {
-            border: `1px solid ${effectiveMode === 'light' ? '#e2e8f0' : '#334155'}`,
-            borderRadius: 12, // Keep cards slightly more rounded if desired, or sync with globally 8
-          },
-        },
-      },
-      MuiDialog: {
-         styleOverrides: {
-            paper: {
-                borderRadius: 16,
-                border: `1px solid ${effectiveMode === 'light' ? '#e2e8f0' : '#334155'}`,
-            }
-         }
-      },
-      MuiPaper: {
-        defaultProps: {
-             elevation: 0,
-        },
-        styleOverrides: {
-            root: {
-                backgroundImage: 'none', // Remove MUI default gradient overlay in dark mode
-            }
-        }
-      }
-    },
-  }), [effectiveMode])
-
-  const colorMode = useMemo(() => ({
-    mode: effectiveMode,
-    toggleColorMode: () => {
-      setMode((prevMode) => {
-        const currentMode = prevMode ?? (prefersDarkMode ? 'dark' : 'light')
-        const nextMode = currentMode === 'light' ? 'dark' : 'light'
-        localStorage.setItem('themeMode', nextMode)
-        return nextMode
-      })
-    },
-  }), [effectiveMode, prefersDarkMode])
-
   return (
-    <ThemeContext.Provider value={colorMode}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <LayoutProvider>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <LayoutProvider>
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
@@ -281,8 +149,7 @@ function App() {
           <Route path="/settings" element={<Layout requiredPermission="settings"><SettingsPage /></Layout>} />
         </Routes>
       </LayoutProvider>
-      </ThemeProvider>
-    </ThemeContext.Provider>
+    </ThemeProvider>
   )
 }
 
