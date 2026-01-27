@@ -11,12 +11,19 @@ import { format, parseISO } from "date-fns";
 import { Snackbar, Alert } from "@mui/material";
 import { StyledPageContainer, StyledContentContainer, StyledGridContainer } from "./styles";
 import { useLayout } from "../../components/LayoutContext";
+import { useBookings } from "./hooks/useBookings";
+import { useRooms } from "./hooks/useRooms";
+import { getSmartPanelTime, formatBorrowedItems, roundToNearest30 } from "./utils/bookingLogic";
 
 const BookingsContent = () => {
     const { confirm } = useConfirm();
     const { setHeaderContent } = useLayout();
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const [currentUser, setCurrentUser] = useState<string>("");
+
+    // Hook Data
+    const { bookings, loading: bookingsLoading, refreshBookings } = useBookings(selectedDate);
+    const { rooms, loading: roomsLoading } = useRooms();
 
     // Snackbar state
     const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -49,7 +56,6 @@ const BookingsContent = () => {
     const [panelData, setPanelData] = useState<any>(null);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [highlightedBookingId, setHighlightedBookingId] = useState<string | null>(null);
-    const [refreshGridTrigger, setRefreshGridTrigger] = useState(0);
     const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const handleBookingSelect = (id: string) => {
@@ -63,14 +69,9 @@ const BookingsContent = () => {
     };
 
     const handleBookClick = useCallback(async () => {
-        // open panel with current time rounded to nearest 30 minutes (no room selected)
         const now = await timeLib.getTime();
-        const mins = now.getMinutes();
-        const rem = mins % 30;
-        if (rem < 15) now.setMinutes(mins - rem);
-        else now.setMinutes(mins + (30 - rem));
-        now.setSeconds(0, 0);
-        setPanelData({ timeSlot: now.toISOString() });
+        const smartTime = getSmartPanelTime(now);
+        setPanelData({ timeSlot: smartTime.toISOString() });
         setPanelOpen(true);
     }, []);
 
@@ -80,24 +81,27 @@ const BookingsContent = () => {
     };
 
     const handleBookingClick = (bookingId: string) => {
-        // fetch booking details and open panel in edit mode
-        (async () => {
-            try {
-                const { data, error } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
-                if (error) {
-                    console.error('Error fetching booking', error);
-                    // still open panel with id only as fallback
+        // Find in our local data first if available, otherwise fetch or just use ID
+        const localBooking = bookings.find(b => b.id === bookingId);
+        if (localBooking) {
+            setPanelData({ booking: localBooking });
+            setPanelOpen(true);
+        } else {
+            (async () => {
+                try {
+                    const { data, error } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
+                    if (error) {
+                        setPanelData({ bookingId });
+                    } else {
+                        setPanelData({ booking: data });
+                    }
+                } catch (e) {
                     setPanelData({ bookingId });
-                } else {
-                    setPanelData({ booking: data });
+                } finally {
+                    setPanelOpen(true);
                 }
-            } catch (e) {
-                console.error('Failed to load booking', e);
-                setPanelData({ bookingId });
-            } finally {
-                setPanelOpen(true);
-            }
-        })();
+            })();
+        }
     };
 
     const handleQuickAction = async (bookingId: string, action: 'activate' | 'end') => {
@@ -114,14 +118,9 @@ const BookingsContent = () => {
                 if (fetchError) throw fetchError;
 
                 if (booking?.borrowed_items && booking.borrowed_items.length > 0) {
-                    const lowercasedItems = booking.borrowed_items.map((item: string) => item.toLowerCase());
-                    const itemsList = lowercasedItems.join(', ');
-                    const lastIndex = itemsList.lastIndexOf(', ');
-                    const formattedList = lastIndex !== -1 
-                        ? itemsList.substring(0, lastIndex) + ' and ' + itemsList.substring(lastIndex + 2)
-                        : itemsList;
+                    const formattedList = formatBorrowedItems(booking.borrowed_items);
+                    const verb = booking.borrowed_items.length === 1 ? 'Is' : 'Are';
                     
-                    const verb = lowercasedItems.length === 1 ? 'Is' : 'Are';
                     const returned = await confirm({
                         title: "Confirm Return",
                         description: `${verb} ${formattedList} returned?`,
@@ -133,33 +132,31 @@ const BookingsContent = () => {
 
                 // Truncate logic
                 const now = await timeLib.getTime();
-                const m = now.getMinutes();
-                const roundedM = Math.round(m / 30) * 30;
-                now.setMinutes(roundedM);
-                now.setSeconds(0);
-                now.setMilliseconds(0);
+                const roundedNow = roundToNearest30(now);
+                roundedNow.setSeconds(0);
+                roundedNow.setMilliseconds(0);
 
                 const bookingEnd = parseISO(`${booking.booking_day}T${booking.end_time}`);
                 const bookingStart = parseISO(`${booking.booking_day}T${booking.start_time}`);
 
-                if (now < bookingEnd) {
-                    if (now <= bookingStart) {
-                         // Delete
-                         const { error } = await supabase.from('bookings').delete().eq('id', bookingId);
-                         if (error) throw error;
-                         showToast("Deleted", "Booking deleted (ended before start time)", "info");
-                         return;
-                    } else {
-                        // Truncate
-                        const newEndTime = format(now, "HH:mm:ss");
-                        const { error } = await supabase
-                            .from('bookings')
-                            .update({ state: newState, end_time: newEndTime })
-                            .eq('id', bookingId);
-                        if (error) throw error;
-                        showToast("Success", `Booking ended early at ${format(now, "HH:mm")}`, "success");
-                        return;
-                    }
+                if (roundedNow <= bookingStart) {
+                     const { error } = await supabase.from('bookings').delete().eq('id', bookingId);
+                     if (error) throw error;
+                     showToast("Deleted", "Booking deleted (ended before start time)", "info");
+                     refreshBookings();
+                     return;
+                }
+
+                if (roundedNow < bookingEnd) {
+                    const newEndTime = format(roundedNow, "HH:mm:ss");
+                    const { error } = await supabase
+                        .from('bookings')
+                        .update({ state: newState, end_time: newEndTime })
+                        .eq('id', bookingId);
+                    if (error) throw error;
+                    showToast("Success", `Booking ended early at ${format(roundedNow, "HH:mm")}`, "success");
+                    refreshBookings();
+                    return;
                 }
             }
 
@@ -171,6 +168,7 @@ const BookingsContent = () => {
             if (error) throw error;
             
             showToast("Success", `Booking ${newState.toLowerCase()}`, "success");
+            refreshBookings();
         } catch (err: any) {
             console.error("Quick action failed", err);
             showToast("Error", "Failed to update booking", "error");
@@ -197,17 +195,20 @@ const BookingsContent = () => {
                 <StyledGridContainer>
                     <BookingGrid
                         selectedDate={selectedDate}
+                        rooms={rooms}
+                        bookings={bookings}
+                        loading={bookingsLoading || roomsLoading}
                         onCellClick={handleCellClick}
                         onBookingClick={handleBookingClick}
                         onQuickAction={handleQuickAction}
                         highlightedBookingId={highlightedBookingId}
-                        refreshTrigger={refreshGridTrigger}
                     />
                 </StyledGridContainer>
                 <SearchPanel 
                     isOpen={isSearchOpen} 
                     onClose={() => setIsSearchOpen(false)} 
-                    selectedDate={selectedDate}
+                    bookings={bookings} 
+                    loading={bookingsLoading}
                     onBookingSelect={handleBookingSelect}
                 />
             </StyledContentContainer>
@@ -218,7 +219,8 @@ const BookingsContent = () => {
                 prefill={panelData}
                 defaultStaffName={currentUser}
                 showToast={showToast}
-                onBookingUpdate={() => setRefreshGridTrigger(prev => prev + 1)}
+                onBookingUpdate={refreshBookings}
+                rooms={rooms}
             />
              <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={handleSnackbarClose}>
                 <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
