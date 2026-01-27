@@ -38,7 +38,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ selectedDate, onDateChan
                 sx={{ width: 160, bgcolor: 'background.paper', borderRadius: 1 }}
             />
 
-            <Button variant="outlined" color="inherit" size="small" onClick={handleToday} sx={{ borderColor: 'rgba(255,255,255,0.5)', color: 'inherit', '&:hover': { borderColor: 'white' } }}>TODAY</Button>
+            <Button variant="outlined" color="inherit" size="small" onClick={handleToday} sx={{ borderColor: 'divider', color: 'inherit', '&:hover': { borderColor: 'text.primary' } }}>TODAY</Button>
 
             <Button 
                 variant="contained" 
@@ -55,7 +55,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ selectedDate, onDateChan
                 startIcon={<SearchIcon />} 
                 onClick={onSearchClick}
                 color="inherit"
-                sx={{ borderColor: 'rgba(255,255,255,0.5)', color: 'inherit', '&:hover': { borderColor: 'white' } }}
+                sx={{ borderColor: 'divider', color: 'inherit', '&:hover': { borderColor: 'text.primary' } }}
             >
                 SEARCH
             </Button>

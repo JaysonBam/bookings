@@ -29,7 +29,7 @@ export const styles = (theme: Theme) => ({
   },
   tableContainer: {
     marginTop: theme.spacing(3),
-    borderRadius: theme.shape.borderRadius,
+    borderRadius: typeof theme.shape.borderRadius === 'number' ? theme.shape.borderRadius / 2 : 4,
     border: `1px solid ${theme.palette.divider}`,
     overflow: 'hidden',
     // Remove overflowing content on mobile, rely on responsive table techniques if needed
