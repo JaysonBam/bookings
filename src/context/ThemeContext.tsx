@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useState, useEffect, ReactNode } from 'react'
-import { ThemeProvider, createTheme, Theme } from '@mui/material/styles'
+import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { CssBaseline, useMediaQuery } from '@mui/material'
 
 type ColorMode = 'light' | 'dark'

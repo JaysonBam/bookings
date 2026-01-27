@@ -175,7 +175,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
           }
         }
       )
-      .subscribe((status) => {
+      .subscribe(() => {
         // status subscription logic
       });
 
@@ -229,15 +229,20 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
                 key={r.id} 
                 sx={{ 
                     backgroundColor: hoveredCell.roomId === r.id ? 'action.hover' : 'background.paper',
-                    color: hoveredCell.roomId === r.id ? 'primary.main' : 'inherit'
+                    color: hoveredCell.roomId === r.id ? 'primary.main' : 'inherit',
+                    verticalAlign: 'bottom'
                 }}
               >
-                <div style={{ fontWeight: 'bold' }}>{r.name}</div>
-                {r.dynamic_labels && r.dynamic_labels.length > 0 && (
-                  <div style={{ fontSize: '0.75rem', fontWeight: 'normal', marginTop: '2px' }}>
-                    {r.dynamic_labels.map(l => l.split(' ').pop()).join(' ')}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <div style={{ fontWeight: 'bold' }}>{r.name}</div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 'normal', marginTop: '2px', minHeight: '1.2em' }}>
+                    {r.dynamic_labels && r.dynamic_labels.length > 0 ? (
+                      r.dynamic_labels.map(l => l.split(' ').pop()).join(' ')
+                    ) : (
+                      '\u00A0'
+                    )}
                   </div>
-                )}
+                </div>
               </StyledHeaderCell>
             ))}
           </TableRow>
