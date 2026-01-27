@@ -20,34 +20,92 @@ interface BookingPanelProps {
   defaultStaffName?: string;
   showToast?: (title: string, description: string, severity?: "success" | "error" | "info") => void;
   onBookingUpdate?: () => void;
+  rooms: any[];
+  courses: any[];
 }
 
-export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefill = null, defaultStaffName = "", showToast = () => {}, onBookingUpdate }) => {
+export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefill = null, defaultStaffName = "", showToast = () => {}, onBookingUpdate, rooms, courses }) => {
   const { confirm } = useConfirm();
   const { currentTime } = useNow();
 
   const [loading, setLoading] = useState(false);
-  const [rooms, setRooms] = useState<any[]>([]);
-  const [courses, setCourses] = useState<any[]>([]);
-  const [borrowableItems, setBorrowableItems] = useState<string[]>([]);
 
-  const [roomId, setRoomId] = useState<string>(prefill?.roomId ?? "");
-  const [startDate, setStartDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
-  const [startClock, setStartClock] = useState<string>(() => {
-    const now = new Date();
-    now.setMinutes(Math.round(now.getMinutes() / 30) * 30);
-    return format(now, "HH:mm");
+  // --- Smart Initializers ---
+  const [roomId, setRoomId] = useState<string>(() => {
+    if (prefill?.booking) return String(prefill.booking.room_id)
+    return prefill?.roomId ?? ""
   });
-  const [duration, setDuration] = useState<string>("30");
-  const [staffName, setStaffName] = useState<string>(defaultStaffName);
-  const [studentNumbers, setStudentNumbers] = useState<string>("");
 
-  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
-  const [otherCourseName, setOtherCourseName] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>(() => {
+    if (prefill?.booking) return prefill.booking.booking_day
+    if (prefill?.timeSlot) {
+        try { return format(new Date(prefill.timeSlot), "yyyy-MM-dd") } catch (e) {}
+    }
+    return format(new Date(), "yyyy-MM-dd")
+  });
+
+  const [startClock, setStartClock] = useState<string>(() => {
+    if (prefill?.booking) return prefill.booking.start_time.slice(0, 5)
+    if (prefill?.timeSlot) {
+        try { return format(new Date(prefill.timeSlot), "HH:mm") } catch (e) {}
+    }
+    const now = new Date()
+    now.setMinutes(Math.round(now.getMinutes() / 30) * 30)
+    return format(now, "HH:mm")
+  });
+
+  const [duration, setDuration] = useState<string>(() => {
+      if (prefill?.booking) {
+          try {
+            const s = parseISO(`${prefill.booking.booking_day}T${prefill.booking.start_time}`)
+            const e = parseISO(`${prefill.booking.booking_day}T${prefill.booking.end_time}`)
+            const mins = Math.round((e.getTime() - s.getTime())/60000)
+            return String(mins)
+          } catch(e) {}
+      }
+      return "30"
+  });
+
+  const [staffName, setStaffName] = useState<string>(() => {
+      return prefill?.booking?.booked_by || defaultStaffName || ""
+  });
+
+  const [studentNumbers, setStudentNumbers] = useState<string>(() => prefill?.booking?.student_numbers || "");
+
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(() => {
+      if (prefill?.booking?.course_id) return String(prefill.booking.course_id)
+      if (prefill?.booking?.course_name) return "other"
+      return ""
+  });
+
+  const [otherCourseName, setOtherCourseName] = useState<string>(() => {
+      if (prefill?.booking?.course_name && !prefill?.booking?.course_id) return prefill.booking.course_name
+      return ""
+  });
+
   const [selectedExtension, setSelectedExtension] = useState<string>("");
-  const [selectedState, setSelectedState] = useState<"Active" | "Reserved" | "Ended">("Active");
+  const [selectedState, setSelectedState] = useState<"Active" | "Reserved" | "Ended">(() => (prefill?.booking?.state as any) ?? "Active");
 
-  const [selectedBorrowed, setSelectedBorrowed] = useState<Record<string, boolean>>({});
+  const [borrowableItems, setBorrowableItems] = useState<string[]>(() => {
+      const targetId = prefill?.booking ? String(prefill.booking.room_id) : (prefill?.roomId ?? "")
+      const r = rooms.find((x: any) => String(x.id) === targetId)
+      return r?.borrowable_items || []
+  });
+
+  const [selectedBorrowed, setSelectedBorrowed] = useState<Record<string, boolean>>(() => {
+    const sel: Record<string, boolean> = {};
+    // If editing, load from booking
+    if (prefill?.booking?.borrowed_items) {
+        (prefill.booking.borrowed_items || []).forEach((it: string) => (sel[it] = true));
+        return sel;
+    }
+    // If new, init with false for current room items
+    const targetId = prefill?.roomId ?? "";
+    const r = rooms.find((x: any) => String(x.id) === targetId);
+    (r?.borrowable_items || []).forEach((it: string) => (sel[it] = false));
+    return sel;
+  });
+
   const [dayBookings, setDayBookings] = useState<any[]>([]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
 
@@ -62,137 +120,32 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const [rankedRooms, setRankedRooms] = useState<any[]>([]);
   const [currentRankIndex, setCurrentRankIndex] = useState(0);
 
-  // Load rooms and courses when panel opens
+  // Background fetch for validation data (no loading spinner)
   useEffect(() => {
     if (!open) return;
-    
-    const load = async () => {
-      setLoading(true);
-      setDayBookings([]);
-      try {
-        setRoomId(prefill?.roomId ?? "");
-        setStartDate(() => new Date().toISOString().slice(0, 10));
-        const nowInit = new Date();
-        nowInit.setMinutes(Math.round(nowInit.getMinutes() / 30) * 30);
-        setStartClock(format(nowInit, "HH:mm"));
-        setDuration("30");
-        setStaffName(defaultStaffName);
-        setStudentNumbers("");
-        setSelectedCourseId("");
-        setOtherCourseName("");
-        setSelectedBorrowed({});
-        setBorrowableItems([]);
-        setSelectedState("Active");
-        setSelectedExtension("");
-        setErrors({});
-        
-        setIsBulkBooking(false);
-        setBulkDates([{ start: "", end: "" }]);
-        setBulkTimes([{ start: "", end: "" }]);
-        setBulkRoomIds([]);
+    const loadBackground = async () => {
+        try {
+            // Need dayBookings for validation logic
+            const dateStr = startDate; 
+            if (!dateStr) return;
 
-        // Reset Smart Select state
-        setIsSmartSelecting(false);
-        setRankedRooms([]);
-        setCurrentRankIndex(0);
-
-        if (!prefill?.timeSlot && !prefill?.booking) {
-          try {
-            const t = await timeLib.getTime();
-            setStartDate(format(t, "yyyy-MM-dd"));
-            setStartClock(format(t, "HH:mm"));
-          } catch (e) {}
-        }
-
-        const [{ data: roomsData }, { data: coursesData }] = await Promise.all([
-          supabase.from("rooms").select("id,name,borrowable_items,is_available,dynamic_labels,capacity,is_open").order("name"),
-          supabase.from("courses").select("id,name").order("name"),
-        ]);
-        const rlist = (roomsData || []).filter((r: any) => r.is_available !== false).map((r: any) => ({ ...r, id: String(r.id) }));
-        setRooms(rlist);
-        setCourses(coursesData || []);
-
-        if (prefill?.roomId) {
-          setRoomId(prefill.roomId);
-          const chosen = rlist.find((x: any) => String(x.id) === String(prefill.roomId));
-          setBorrowableItems(chosen?.borrowable_items || []);
-          const sel: Record<string, boolean> = {};
-          (chosen?.borrowable_items || []).forEach((it: string) => (sel[it] = false));
-          setSelectedBorrowed(sel);
-        }
-
-        if (prefill?.timeSlot) {
-          try {
-            const dt = new Date(prefill.timeSlot);
-            setStartDate(format(dt, "yyyy-MM-dd"));
-            setStartClock(format(dt, "HH:mm"));
-          } catch (e) {}
-        }
-
-        if (prefill?.booking) {
-          const b = prefill.booking;
-          setRoomId(String(b.room_id));
-          setStartDate(b.booking_day);
-          setStartClock(b.start_time.slice(0,5));
-          try {
-            const s = parseISO(`${b.booking_day}T${b.start_time}`);
-            const e = parseISO(`${b.booking_day}T${b.end_time}`);
-            const mins = Math.round((e.getTime() - s.getTime())/60000);
-            setDuration(String(mins));
-          } catch (e) {}
-          setStaffName(b.booked_by || "");
-          setStudentNumbers(b.student_numbers || "");
-          if (b.course_id) {
-              setSelectedCourseId(String(b.course_id));
-              setOtherCourseName("");
-          } else if (b.course_name) {
-              setSelectedCourseId("other");
-              setOtherCourseName(b.course_name || "");
-          } else {
-              setSelectedCourseId("");
-              setOtherCourseName("");
-          }
-          const chosen = rlist.find((x: any) => String(x.id) === String(b.room_id));
-          setBorrowableItems(chosen?.borrowable_items || []);
-          const sel: Record<string, boolean> = {};
-          (b.borrowed_items || []).forEach((it: string) => (sel[it] = true));
-          setSelectedBorrowed(sel);
-          setSelectedState((b.state as any) ?? "Active");
-
-          const { data: bookingsData } = await supabase
-            .from('bookings')
-            .select('id, room_id, start_time, end_time, state, booking_day')
-            .eq('booking_day', b.booking_day);
-          if (bookingsData) {
-            setDayBookings(bookingsData);
-            try {
-                const s = parseISO(`${b.booking_day}T${b.start_time}`);
-                const e = parseISO(`${b.booking_day}T${b.end_time}`);
-                const mins = Math.round((e.getTime() - s.getTime())/60000);
-                setDuration(String(mins));
-            } catch (e) {}
-          }
-        } else {
-            const targetDate = prefill?.timeSlot ? format(new Date(prefill.timeSlot), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+            // Simple fetch, don't clear form
             const { data: bookingsData } = await supabase
-            .from('bookings')
-            .select('id, room_id, start_time, end_time, state, booking_day')
-            .eq('booking_day', targetDate);
-             if (bookingsData) {
+                .from('bookings')
+                .select('id, room_id, start_time, end_time, state, booking_day')
+                .eq('booking_day', dateStr);
+            if (bookingsData) {
                 setDayBookings(bookingsData);
             }
+        } catch(e) {
+            console.error("Background fetch failed", e);
         }
-      } catch (err) {
-        console.error("Error loading panel data", err);
-        showToast("Error", "Failed to load booking data", "error");
-      } finally {
-        setLoading(false);
-      }
     };
+    loadBackground();
+  }, [open, startDate]); // Re-fetch if date changes
 
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  // Remove the old 'load' effect that repopulates everything
+  // effectively replaced by initializers above.
 
   useEffect(() => {
     if (!startDate || !open) return;

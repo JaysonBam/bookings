@@ -1,8 +1,7 @@
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { Box, Toolbar, CssBaseline } from '@mui/material'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
-import useMediaQuery from '@mui/material/useMediaQuery'
+import { Box, Toolbar } from '@mui/material' 
 import { useEffect, useState } from 'react'
+import { CustomThemeProvider } from './context/ThemeContext'
 
 import LoginPage from './pages/login/page'
 import BookingsPage from './pages/bookings/page'
@@ -125,16 +124,8 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
 
 
 function App() {
-  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
-  const theme = createTheme({
-    palette: {
-      mode: prefersDarkMode ? 'dark' : 'light',
-    },
-  })
-
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <CustomThemeProvider>
       <LayoutProvider>
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
@@ -149,7 +140,7 @@ function App() {
           <Route path="/settings" element={<Layout requiredPermission="settings"><SettingsPage /></Layout>} />
         </Routes>
       </LayoutProvider>
-    </ThemeProvider>
+    </CustomThemeProvider>
   )
 }
 

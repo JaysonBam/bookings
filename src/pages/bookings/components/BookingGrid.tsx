@@ -117,13 +117,11 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
 
   const fetchBookings = useCallback(async (dateStr: string) => {
       try {
-        console.log("Fetching bookings for:", dateStr);
         const { data: bookingsData, error: bookingsErr } = await supabase
           .from("bookings")
           .select(`*, courses(id, name, color_hex)`)
           .eq("booking_day", dateStr);
         if (bookingsErr) { console.error("Error loading bookings:", bookingsErr); setLoading(false); return; }
-        console.log("Fetched bookings:", bookingsData?.length);
         if (bookingsData) {
           const mapped = (bookingsData as any[]).map((b) => {
             const startIso = `${b.booking_day}T${(b.start_time || "").slice(0,8)}`;
@@ -170,7 +168,6 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bookings' },
         (payload: any) => {
-          console.log('Realtime update received:', payload);
           if (payload.new && payload.new.booking_day === dateStr) {
                fetchBookings(dateStr);
           } else if (payload.old) {
@@ -179,8 +176,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
         }
       )
       .subscribe((status) => {
-        console.log(`Realtime subscription status for ${dateStr}:`, status);
-        if (status === 'CLOSED') console.log(`Realtime subscription status for ${dateStr}: CLOSED`);
+        // status subscription logic
       });
 
     return () => {
