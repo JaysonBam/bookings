@@ -32,7 +32,7 @@ export const StyledTableContainer = styled(TableContainer)(({ theme }) => ({
   minHeight: 0, // Ensure it shrinks
   overflow: 'auto',
   border: `1px solid ${theme.palette.divider}`,
-  borderRadius: typeof theme.shape.borderRadius === 'number' ? theme.shape.borderRadius / 2 : 4, // Reduce radius for grid to avoid cutting off axis cells
+  borderRadius: theme.shape.borderRadius,
   '&::-webkit-scrollbar': {
       width: '8px',
       height: '8px',
@@ -43,9 +43,7 @@ export const StyledTableContainer = styled(TableContainer)(({ theme }) => ({
   },
 }));
 
-export const StyledHeaderCell = styled(TableCell, {
-  shouldForwardProp: (prop) => prop !== 'isHighlighted',
-})<{ isHighlighted?: boolean }>(({ theme, isHighlighted }) => ({
+export const StyledHeaderCell = styled(TableCell)(({ theme }) => ({
   backgroundColor: theme.palette.background.paper, 
   position: 'sticky',
   top: 0,
@@ -55,40 +53,18 @@ export const StyledHeaderCell = styled(TableCell, {
   textAlign: 'center',
   padding: theme.spacing(1),
   minWidth: '60px',
-  // Use pseudo-element for highlighting to preserve opacity
-  '&::after': {
-    content: '""',
-    position: 'absolute',
-    inset: 0,
-    backgroundColor: theme.palette.action.hover,
-    opacity: isHighlighted ? 1 : 0,
-    pointerEvents: 'none',
-    transition: theme.transitions.create('opacity'),
-  },
 }));
 
-export const StyledTimeCell = styled(TableCell, {
-  shouldForwardProp: (prop) => prop !== 'isHighlighted' && prop !== 'isCurrent',
-})<{ isHighlighted?: boolean; isCurrent?: boolean }>(({ theme, isHighlighted, isCurrent }) => ({
+export const StyledTimeCell = styled(TableCell)(({ theme }) => ({
   position: 'sticky',
   left: 0,
   backgroundColor: theme.palette.background.paper,
   zIndex: 11, // Higher than header? No, header is 10. Time column 11. Corner (0,0) needs 12.
   borderRight: `1px solid ${theme.palette.divider}`,
-  fontWeight: isCurrent ? 'bold' : 'normal',
-  color: isCurrent ? theme.palette.secondary.main : 'inherit',
+  fontWeight: 'bold',
   textAlign: 'center',
   padding: theme.spacing(1),
   width: '50px',
-  '&::after': {
-    content: '""',
-    position: 'absolute',
-    inset: 0,
-    backgroundColor: isCurrent ? theme.palette.action.selected : theme.palette.action.hover,
-    opacity: (isHighlighted || isCurrent) ? 1 : 0,
-    pointerEvents: 'none',
-    transition: theme.transitions.create('opacity'),
-  },
 }));
 
 export const StyledCornerCell = styled(TableCell)(({ theme }) => ({

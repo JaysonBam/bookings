@@ -23,11 +23,8 @@ import BuildIcon from '@mui/icons-material/Build'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import SettingsIcon from '@mui/icons-material/Settings'
 import LogoutIcon from '@mui/icons-material/Logout'
-import Brightness4Icon from '@mui/icons-material/Brightness4'
-import Brightness7Icon from '@mui/icons-material/Brightness7'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useLayout } from './LayoutContext'
-import { useThemeContext } from './ThemeContext'
 
 type User = {
   name: string
@@ -60,7 +57,6 @@ export default function Sidebar({
   const location = useLocation()
   const navigate = useNavigate()
   const theme = useTheme()
-  const { toggleColorMode, mode } = useThemeContext()
 
   const handleLogout = () => {
     if (onSignOut) return onSignOut()
@@ -131,19 +127,6 @@ export default function Sidebar({
             </ListItemButton>
           </ListItem>
         ))}
-      </List>
-
-      <Box sx={{ flexGrow: 1 }} />
-
-      <List>
-        <ListItem disablePadding sx={{ display: 'block' }}>
-          <ListItemButton onClick={toggleColorMode} sx={{ px: 2.5 }}>
-            <ListItemIcon sx={{ minWidth: 0, mr: 3 }}>
-              {mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
-            </ListItemIcon>
-            <ListItemText primary={mode === 'dark' ? "Light Mode" : "Dark Mode"} />
-          </ListItemButton>
-        </ListItem>
       </List>
 
       <Divider />
