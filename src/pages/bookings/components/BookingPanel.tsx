@@ -437,7 +437,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const sizeStr = window.prompt("Enter Group Size:");
     if (!sizeStr) return;
     const size = parseInt(sizeStr, 10);
-    if (isNaN(size)) {
+    if (isNaN(size) || size <= 0) {
         showToast("Invalid size", "Please enter a number", "error");
         return;
     }

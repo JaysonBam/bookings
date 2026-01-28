@@ -4,6 +4,7 @@ import { supabase } from "../../../lib/supabaseClient";
 import BookingCell from "./BookingCell";
 import { useNow } from "../context/NowContext";
 import { CircularProgress, Box, Table, TableBody, TableRow, TableHead } from "@mui/material";
+import { alpha } from '@mui/material/styles';
 import { StyledTableContainer, StyledHeaderCell, StyledCornerCell, StyledTimeCell } from "../styles";
 
 interface Room {
@@ -227,11 +228,15 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
             {rooms.map((r) => (
               <StyledHeaderCell 
                 key={r.id} 
-                sx={{ 
-                    backgroundColor: hoveredCell.roomId === r.id ? 'action.hover' : 'background.paper',
-                    color: hoveredCell.roomId === r.id ? 'primary.main' : 'inherit',
-                    verticalAlign: 'bottom'
-                }}
+                sx={(theme) => ({ 
+                    backgroundColor: theme.palette.background.paper,
+                    color: hoveredCell.roomId === r.id ? theme.palette.primary.main : 'inherit',
+                    verticalAlign: 'bottom',
+                    ...(hoveredCell.roomId === r.id && {
+                      boxShadow: `0 4px 8px ${alpha(theme.palette.primary.main, 0.12)}`,
+                      zIndex: 20,
+                    })
+                })}
               >
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
                   <div style={{ fontWeight: 'bold' }}>{r.name}</div>
@@ -253,11 +258,15 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
             return (
             <TableRow key={slot.toISOString()}>
               <StyledTimeCell 
-                sx={{ 
-                    backgroundColor: hoveredCell.timeSlotIso === slot.toISOString() ? 'action.hover' : isCurrentRow ? 'action.selected' : 'background.paper',
-                    color: hoveredCell.timeSlotIso === slot.toISOString() ? 'primary.main' : isCurrentRow ? 'secondary.main' : 'inherit',
-                    fontWeight: isCurrentRow ? 'bold' : 'normal'
-                }}
+                sx={(theme) => ({ 
+                    backgroundColor: theme.palette.background.paper,
+                    color: hoveredCell.timeSlotIso === slot.toISOString() ? theme.palette.primary.main : isCurrentRow ? theme.palette.secondary.main : 'inherit',
+                    fontWeight: isCurrentRow ? 'bold' : 'normal',
+                    ...(hoveredCell.timeSlotIso === slot.toISOString() && {
+                      boxShadow: `0 4px 8px ${alpha(theme.palette.primary.main, 0.12)}`,
+                      zIndex: 21,
+                    })
+                })}
               >
                 {format(slot, "HH:mm")}
               </StyledTimeCell>
