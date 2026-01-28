@@ -617,9 +617,16 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     try {
       const start = parseISO(`${startDate}T${startClock}`);
       const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
-      let end = addMinutes(start, parseInt(duration, 10) + extensionMins);
+      
+      const originalDuration = parseInt(duration, 10);
+      let end = addMinutes(start, originalDuration);
+      
+      // Calculate the end time for the NEW booking if extended
+      let extendedEnd = addMinutes(end, extensionMins);
 
-      if (state === 'Ended') {
+      // Handle 'Ended' logic (truncating time if ending now)
+      // Only applies if NOT extending
+      if (state === 'Ended' && extensionMins === 0) {
           const now = await timeLib.getTime();
           const m = now.getMinutes();
           const roundedM = Math.round(m / 30) * 30;
@@ -627,6 +634,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           now.setSeconds(0);
           now.setMilliseconds(0);
           
+          // Truncate 'end'
           if (now < end) {
               if (now <= start) {
                    if (prefill?.booking) {
@@ -645,39 +653,90 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                   end = now;
               }
           }
+      } else if (!prefill?.booking && extensionMins > 0) {
+          // If for some reason we are creating new and extension is set (unlikely via UI but safe to handle)
+          end = extendedEnd; 
+      } else if (prefill?.booking && extensionMins === 0) {
+          // Standard update, no extension
+           // Use 'end' as calculated (possibly truncated by Ended logic above)
       }
 
       const booking_day = startDate;
-      const start_time = format(start, "HH:mm:ss");
-      const end_time = format(end, "HH:mm:ss");
-
-      const payload: any = {
+      
+      const basePayload: any = {
         room_id: parseInt(roomId, 10),
-        start_time,
-        end_time,
         booking_day,
         student_numbers: studentNumbers || null,
         borrowed_items: borrowed,
         booked_by: staffName,
-        state,
       };
 
       if (selectedCourseId && selectedCourseId !== "other") {
-        payload.course_id = parseInt(selectedCourseId, 10);
-        payload.course_name = null;
+        basePayload.course_id = parseInt(selectedCourseId, 10);
+        basePayload.course_name = null;
       } else if (selectedCourseId === "other") {
-        payload.course_id = null;
-        payload.course_name = otherCourseName || null;
+        basePayload.course_id = null;
+        basePayload.course_name = otherCourseName || null;
       } else {
-        payload.course_id = null;
-        payload.course_name = null;
+        basePayload.course_id = null;
+        basePayload.course_name = null;
       }
 
       if (prefill?.booking) {
-        const { error } = await supabase.from("bookings").update(payload).eq("id", prefill.booking.id);
-        if (error) throw error;
-        showToast("Updated", "Booking updated", "success");
+        if (extensionMins > 0) {
+             // SPLIT LOGIC
+             // 1. Update Old Booking to Ended
+             // Time: Start -> End (Original Duration)
+             const oldPayload = {
+                 ...basePayload,
+                 start_time: format(start, "HH:mm:ss"),
+                 end_time: format(end, "HH:mm:ss"),
+                 state: 'Ended'
+             };
+             
+             const { error: updateError } = await supabase.from("bookings").update(oldPayload).eq("id", prefill.booking.id);
+             if (updateError) throw updateError;
+
+             // 2. Create New Booking (Active)
+             // Time: End -> ExtendedEnd
+             const newPayload = {
+                 ...basePayload,
+                 start_time: format(end, "HH:mm:ss"),
+                 end_time: format(extendedEnd, "HH:mm:ss"),
+                 state: 'Active'
+             };
+             
+             const { error: insertError } = await supabase.from("bookings").insert(newPayload);
+             if (insertError) throw insertError;
+
+             showToast("Extended", "Booking extended (new session created)", "success");
+        } else {
+            // Standard Update
+            const payload = {
+                ...basePayload,
+                start_time: format(start, "HH:mm:ss"),
+                end_time: format(end, "HH:mm:ss"),
+                state,
+            };
+            const { error } = await supabase.from("bookings").update(payload).eq("id", prefill.booking.id);
+            if (error) throw error;
+            showToast("Updated", "Booking updated", "success");
+        }
       } else {
+        // Create New
+        // Note: New creations via this form don't usually use extension logic, 
+        // but if they did, `end` was irrelevant unless we update it.
+        // We really want start -> end (start+duration) here.
+        // If extensionMins was > 0 for new, we handled it with `end = extendedEnd` above? 
+        // Wait, line "else if (!prefill?.booking && extensionMins > 0) { end = extendedEnd; }" covers it.
+        // So `end` is correct.
+        
+        const payload = {
+            ...basePayload,
+            start_time: format(start, "HH:mm:ss"),
+            end_time: format(end, "HH:mm:ss"),
+            state,
+        };
         const { error } = await supabase.from("bookings").insert(payload);
         if (error) throw error;
         showToast("Saved", "Booking created", "success");
