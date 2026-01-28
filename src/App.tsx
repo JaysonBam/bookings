@@ -97,7 +97,7 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
         component="main"
         sx={{
           flexGrow: 1,
-          p: location.pathname === '/bookings' ? 0 : 3,
+          p: 0,
           ml: open ? `${drawerWidth}px` : 0,
           width: open ? `calc(100% - ${drawerWidth}px)` : '100%',
           boxSizing: 'border-box',
@@ -110,10 +110,14 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
         <Toolbar />
         <Box sx={{ 
           flex: 1, 
-          display: 'flex',
+          display: location.pathname === '/bookings' ? 'flex' : 'block',
           flexDirection: 'column',
           minHeight: 0, // CRITICAL: allows flex child to shrink below content size
-          overflow: location.pathname === '/bookings' ? 'hidden' : 'auto' 
+          overflow: location.pathname === '/bookings' ? 'hidden' : 'auto',
+          bgcolor: 'background.default', // Ensures background color covers the padding area
+          pt: location.pathname === '/bookings' ? 0 : { xs: 2, md: 3 },
+          px: location.pathname === '/bookings' ? 0 : { xs: 1, md: 3 },
+          pb: location.pathname === '/bookings' ? 0 : { xs: 8, md: 10 }
         }}>
           {children}
         </Box>

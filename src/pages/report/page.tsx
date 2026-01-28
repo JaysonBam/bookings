@@ -219,12 +219,12 @@ export default function ReportPage() {
   };
 
   return (
-    <Box sx={{ bgcolor: "background.default", minHeight: "100%", pb: 4 }}>
-      <Container maxWidth="xl">
-        <Grid container spacing={3}>
+    <Box sx={{ bgcolor: "background.default", minHeight: "100%", pb: { xs: 8, md: 12 } }}>
+      <Container maxWidth="xl" sx={{ px: { xs: 1, md: 3 }, pt: { xs: 2, md: 3 } }}>
+        <Grid container spacing={{ xs: 2, md: 3 }}>
             {/* Control Panel */}
             <Grid item xs={12}>
-                <Paper sx={{ p: 3, display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 4, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+                <Paper sx={{ p: { xs: 2, md: 3 }, display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 4 }, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
                     <Box sx={{ flex: 1 }}>
                         <Typography variant="h5" fontWeight="bold" gutterBottom>Monthly Analytics Export</Typography>
                         <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -274,7 +274,7 @@ export default function ReportPage() {
                         </Avatar>
                         <Box>
                              <Typography variant="subtitle1" fontWeight="bold">Raw Data</Typography>
-                             <Typography variant="body2" color="text.secondary">Complete registry of all bookings.</Typography>
+                             <Typography variant="body2" color="text.secondary">Complete data of all bookings.</Typography>
                         </Box>
                     </Box>
                     <Divider />
@@ -298,7 +298,7 @@ export default function ReportPage() {
                         </Avatar>
                         <Box>
                              <Typography variant="subtitle1" fontWeight="bold">Room Statistics</Typography>
-                             <Typography variant="body2" color="text.secondary">Usage metrics by room.</Typography>
+                             <Typography variant="body2" color="text.secondary">Usage by room.</Typography>
                         </Box>
                     </Box>
                      <Divider />
@@ -307,7 +307,6 @@ export default function ReportPage() {
                             <Stack spacing={1}>
                                 <Box>• Total booking count</Box>
                                 <Box>• Total hours utilized</Box>
-                                <Box>• Identification of high-traffic zones</Box>
                             </Stack>
                         </Typography>
                     </Box>
@@ -322,7 +321,7 @@ export default function ReportPage() {
                         </Avatar>
                         <Box>
                              <Typography variant="subtitle1" fontWeight="bold">Course Statistics</Typography>
-                             <Typography variant="body2" color="text.secondary">Engagement by course.</Typography>
+                             <Typography variant="body2" color="text.secondary">Usages by course.</Typography>
                         </Box>
                     </Box>
                      <Divider />
@@ -330,8 +329,7 @@ export default function ReportPage() {
                          <Typography variant="caption" color="text.secondary" component="div">
                             <Stack spacing={1}>
                                 <Box>• Bookings per course</Box>
-                                <Box>• Hours allocated to coursework</Box>
-                                <Box>• Resource demand analysis</Box>
+                                <Box>• Hours allocated to course</Box>
                             </Stack>
                         </Typography>
                     </Box>

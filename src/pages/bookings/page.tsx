@@ -59,7 +59,7 @@ const BookingsContent = () => {
     useEffect(() => {
         const fetchData = async () => {
             const [{ data: roomsData }, { data: coursesData }] = await Promise.all([
-                supabase.from("rooms").select("id,name,borrowable_items,is_available,dynamic_labels,capacity,is_open").order("name"),
+                supabase.from("rooms").select("id,name,borrowable_items,is_available,dynamic_labels,max_people,min_people").order("name"),
                 supabase.from("courses").select("id,name").order("name"),
             ]);
             setRooms((roomsData || []).filter((r: any) => r.is_available !== false).map((r: any) => ({ ...r, id: String(r.id) })));

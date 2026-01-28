@@ -16,9 +16,9 @@ import SwipeableDrawer from '@mui/material/SwipeableDrawer'
 import logo from '../assets/logo.svg'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
-import KeyIcon from '@mui/icons-material/VpnKey'
+import PeopleIcon from '@mui/icons-material/People'
 import BugReportIcon from '@mui/icons-material/BugReport'
-import DescriptionIcon from '@mui/icons-material/Description'
+import HelpIcon from '@mui/icons-material/Help'
 import BuildIcon from '@mui/icons-material/Build'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import SettingsIcon from '@mui/icons-material/Settings'
@@ -69,11 +69,11 @@ export default function Sidebar({
 
   const menuItems = [
     { label: 'Bookings', path: '/bookings', icon: <CalendarMonthIcon /> },
-    { label: 'Access', path: '/access', icon: <KeyIcon />, protected: 'authorisation' },
-    { label: 'Bug', path: '/bug', icon: <BugReportIcon /> },
-    { label: 'Document', path: '/document', icon: <DescriptionIcon /> },
+    { label: 'Analytics', path: '/report', icon: <AssessmentIcon />, protected: 'analytics' },
+    { label: 'Manage Users', path: '/access', icon: <PeopleIcon />, protected: 'authorisation' },
     { label: 'Maintenance', path: '/maintenance', icon: <BuildIcon /> },
-    { label: 'Report', path: '/report', icon: <AssessmentIcon />, protected: 'analytics' },
+    { label: 'Report Bug', path: '/bug', icon: <BugReportIcon /> },
+    { label: 'Help', path: '/document', icon: <HelpIcon /> },
     { label: 'Settings', path: '/settings', icon: <SettingsIcon />, protected: 'settings' },
   ]
 

@@ -159,17 +159,23 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
                 <Box sx={{ 
                     position: 'absolute', inset: 0, 
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    bgcolor: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(2px)',
+                    bgcolor: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(1px)',
                     zIndex: 2, borderRadius: 1
                 }}>
                     <Button 
                         size="small" 
                         variant="contained" 
-                        color={booking.state === 'Reserved' ? 'primary' : 'error'}
+                        color={booking.state === 'Reserved' ? 'success' : 'error'}
                         onClick={(e) => handleQuickActionClick(e, booking.state === 'Reserved' ? 'activate' : 'end')}
-                        sx={{ fontSize: '0.7rem', minWidth: '50px', p: '2px 8px' }}
+                        sx={{ 
+                            fontSize: '0.8rem', 
+                            minWidth: '70px', 
+                            p: '4px 12px', 
+                            fontWeight: 'bold', 
+                            boxShadow: 3 
+                        }}
                     >
-                        {booking.state === 'Reserved' ? 'Activate' : 'End'}
+                        {booking.state === 'Reserved' ? 'Start' : 'End'}
                     </Button>
                 </Box>
             )}

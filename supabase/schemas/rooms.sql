@@ -1,8 +1,8 @@
 CREATE TABLE public.rooms (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
-  capacity SMALLINT CHECK (capacity > 0),
-  is_open BOOLEAN DEFAULT TRUE,
+  max_people SMALLINT CHECK (max_people > 0),
+  min_people SMALLINT CHECK (min_people > 0),
   is_available BOOLEAN DEFAULT TRUE,
   dynamic_labels TEXT[] DEFAULT '{}',
   borrowable_items TEXT[] DEFAULT '{}'      

@@ -35,11 +35,11 @@ import SchoolIcon from '@mui/icons-material/School';
 type RoomRow = {
   id: number;
   name: string;
-  capacity: number | null;
+  max_people: number | null;
+  min_people: number | null;
   borrowable_items?: string[] | null;
   dynamic_labels?: string[] | null;
   is_available?: boolean | null;
-  is_open?: boolean | null;
 };
 
 type CourseRow = {
@@ -158,27 +158,27 @@ export default function SettingsPage() {
     if (id > 0) setDeletedRoomIds((s) => [...s, id]);
   }
 
-  function handleToggleRoomField(id: number, field: "is_available" | "is_open", value: boolean) {
+  function handleToggleRoomField(id: number, field: "is_available", value: boolean) {
     setRooms((s) => s.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
   }
 
   async function createRoom(payload: {
     name: string;
-    capacity?: number | null;
+    max_people?: number | null;
+    min_people?: number | null;
     borrowable_items?: string[] | null;
     dynamic_labels?: string[] | null;
     is_available?: boolean | null;
-    is_open?: boolean | null;
   }) {
     const tempId = -Date.now() - Math.floor(Math.random() * 1000);
     const newRoom: RoomRow = {
       id: tempId,
       name: payload.name,
-      capacity: payload.capacity ?? null,
+      max_people: payload.max_people ?? null,
+      min_people: payload.min_people ?? null,
       borrowable_items: payload.borrowable_items ?? null,
       dynamic_labels: payload.dynamic_labels ?? null,
       is_available: payload.is_available ?? null,
-      is_open: payload.is_open ?? null,
     };
     setRooms((s) => [...s, newRoom]);
     setBorrowableInputs((s) => ({ ...s, [newRoom.id]: (newRoom.borrowable_items ?? []).join(", ") }));
@@ -202,11 +202,11 @@ export default function SettingsPage() {
           
           const payload: any = {
             name: row.name,
-            capacity: row.capacity ?? null,
+            max_people: row.max_people ?? null,
+            min_people: row.min_people ?? null,
             borrowable_items: Array.isArray(parsedBorrow) ? (parsedBorrow.length ? parsedBorrow : null) : null,
             dynamic_labels: row.dynamic_labels ?? null,
             is_available: row.is_available ?? null,
-            is_open: row.is_open ?? null,
           };
           await supabase.from("rooms").update(payload).eq("id", row.id);
         })
@@ -220,11 +220,11 @@ export default function SettingsPage() {
               : row.borrowable_items ?? null;
           return {
             name: row.name,
-            capacity: row.capacity ?? null,
+            max_people: row.max_people ?? null,
+            min_people: row.min_people ?? null,
             borrowable_items: Array.isArray(parsedBorrow) ? (parsedBorrow.length ? parsedBorrow : null) : null,
             dynamic_labels: row.dynamic_labels ?? null,
             is_available: row.is_available ?? null,
-            is_open: row.is_open ?? null,
           };
         });
         await supabase.from("rooms").insert(insertPayloads);
@@ -261,19 +261,19 @@ export default function SettingsPage() {
   }
 
   return (
-    <Box sx={{ bgcolor: "background.default", minHeight: "100%", pb: 4 }}>
-      <Container maxWidth="xl">
+    <Box sx={{ bgcolor: "background.default", minHeight: "100%", pb: { xs: 8, md: 12 } }}>
+      <Container maxWidth="xl" sx={{ px: { xs: 1, md: 3 }, pt: { xs: 2, md: 3 } }}>
         {/* Sticky Utility Bar */}
         <Paper 
           sx={{ 
-            p: 2, 
+            p: { xs: 1.5, md: 2 }, 
             position: 'sticky', 
             top: 0, 
             zIndex: 10, 
             display: 'flex', 
             justifyContent: 'space-between', 
             alignItems: 'center', 
-            mb: 3,
+            mb: { xs: 2, md: 3 },
             mt: 0 
           }}
           elevation={2}
@@ -384,10 +384,10 @@ export default function SettingsPage() {
                         <TableHead>
                             <TableRow>
                                 <TableCell>Name</TableCell>
-                                <TableCell width={100}>Capacity</TableCell>
+                                <TableCell width={100}>Max People</TableCell>
+                                <TableCell width={100}>Min People</TableCell>
                                 <TableCell>Borrowable Items</TableCell>
                                 <TableCell align="center" width={100}>Available</TableCell>
-                                <TableCell align="center" width={100}>Open</TableCell>
                                 <TableCell align="right" width={80}>Actions</TableCell>
                             </TableRow>
                         </TableHead>
@@ -406,8 +406,18 @@ export default function SettingsPage() {
                                     <TableCell>
                                         <TextField 
                                             type="number"
-                                            value={r.capacity ?? ""} 
-                                            onChange={(e) => setRooms((s) => s.map((x) => (x.id === r.id ? { ...x, capacity: e.target.value ? Number(e.target.value) : null } : x)))}
+                                            value={r.max_people ?? ""} 
+                                            onChange={(e) => setRooms((s) => s.map((x) => (x.id === r.id ? { ...x, max_people: e.target.value ? Number(e.target.value) : null } : x)))}
+                                            size="small" 
+                                            variant="standard"
+                                            fullWidth
+                                        />
+                                    </TableCell>
+                                    <TableCell>
+                                        <TextField 
+                                            type="number"
+                                            value={r.min_people ?? ""} 
+                                            onChange={(e) => setRooms((s) => s.map((x) => (x.id === r.id ? { ...x, min_people: e.target.value ? Number(e.target.value) : null } : x)))}
                                             size="small" 
                                             variant="standard"
                                             fullWidth
@@ -435,13 +445,6 @@ export default function SettingsPage() {
                                         <Checkbox 
                                             checked={!!r.is_available} 
                                             onChange={(e) => handleToggleRoomField(r.id, "is_available", e.target.checked)}
-                                            size="small"
-                                        />
-                                    </TableCell>
-                                    <TableCell align="center">
-                                        <Checkbox 
-                                            checked={!!r.is_open} 
-                                            onChange={(e) => handleToggleRoomField(r.id, "is_open", e.target.checked)}
                                             size="small"
                                         />
                                     </TableCell>
@@ -527,25 +530,25 @@ export default function SettingsPage() {
 
 function NewRoomRow({ onCreate }: { onCreate: (payload: any) => Promise<void> }) {
   const [name, setName] = useState("");
-  const [capacity, setCapacity] = useState<string>("");
+  const [maxPeople, setMaxPeople] = useState<string>("");
+  const [minPeople, setMinPeople] = useState<string>("");
   const [borrowable, setBorrowable] = useState<string>("");
   const [isAvailable, setIsAvailable] = useState<boolean>(true);
-  const [isOpen, setIsOpen] = useState<boolean>(true);
 
   const handleCreate = async () => {
     if (!name.trim()) return;
     await onCreate({
       name: name.trim(),
-      capacity: capacity ? Number(capacity) : null,
+      max_people: maxPeople ? Number(maxPeople) : null,
+      min_people: minPeople ? Number(minPeople) : null,
       borrowable_items: borrowable ? borrowable.split(",").map((s) => s.trim()).filter(Boolean) : null,
       is_available: isAvailable,
-      is_open: isOpen,
     });
     setName("");
-    setCapacity("");
+    setMaxPeople("");
+    setMinPeople("");
     setBorrowable("");
     setIsAvailable(true);
-    setIsOpen(true);
   };
 
   return (
@@ -563,9 +566,20 @@ function NewRoomRow({ onCreate }: { onCreate: (payload: any) => Promise<void> })
         <TableCell>
             <TextField
                 type="number"
-                placeholder="Cap"
-                value={capacity}
-                onChange={(e) => setCapacity(e.target.value)}
+                placeholder="Max"
+                value={maxPeople}
+                onChange={(e) => setMaxPeople(e.target.value)}
+                size="small"
+                variant="outlined"
+                fullWidth
+            />
+        </TableCell>
+        <TableCell>
+            <TextField
+                type="number"
+                placeholder="Min"
+                value={minPeople}
+                onChange={(e) => setMinPeople(e.target.value)}
                 size="small"
                 variant="outlined"
                 fullWidth
@@ -583,9 +597,6 @@ function NewRoomRow({ onCreate }: { onCreate: (payload: any) => Promise<void> })
         </TableCell>
         <TableCell align="center">
             <Checkbox checked={isAvailable} onChange={(e) => setIsAvailable(e.target.checked)} size="small" />
-        </TableCell>
-        <TableCell align="center">
-             <Checkbox checked={isOpen} onChange={(e) => setIsOpen(e.target.checked)} size="small" />
         </TableCell>
         <TableCell align="right">
             <Button 

@@ -119,12 +119,22 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const [isSmartSelecting, setIsSmartSelecting] = useState(false);
   const [rankedRooms, setRankedRooms] = useState<any[]>([]);
   const [currentRankIndex, setCurrentRankIndex] = useState(0);
+  const [openingHours, setOpeningHours] = useState<{ start: string; end: string }>({ start: "06:00", end: "21:00" });
 
   // Background fetch for validation data (no loading spinner)
   useEffect(() => {
     if (!open) return;
     const loadBackground = async () => {
         try {
+            // Fetch Settings
+            const { data: hoursData } = await supabase.from("settings").select("value").eq("key", "operation_hours").maybeSingle();
+            if (hoursData && hoursData.value) {
+                const val = hoursData.value as any;
+                const start = val.start ?? val.open ?? "06:00";
+                const end = val.end ?? val.close ?? "21:00";
+                setOpeningHours({ start, end });
+            }
+
             // Need dayBookings for validation logic
             const dateStr = startDate; 
             if (!dateStr) return;
@@ -167,9 +177,24 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     };
     const startMins = parseTime(startClock);
     let limitMins = 24 * 60;
+    
+    const isLate = (b: any) => {
+        if (b.state !== 'Reserved') return false;
+        if (b.booking_day !== startDate) return false;
+        try {
+            const bStart = parseISO(`${b.booking_day}T${b.start_time}`);
+            const limit = addMinutes(bStart, 10);
+            return currentTime > limit;
+        } catch (e) { return false; }
+    };
+
     for (const b of dayBookings) {
       if (String(b.room_id) !== String(roomId)) continue;
       if (prefill?.booking && String(b.id) === String(prefill.booking.id)) continue;
+      
+      // Ignore late bookings for duration availability
+      if (isLate(b)) continue;
+
       const bStart = parseTime(b.start_time);
       const bEnd = parseTime(b.end_time);
       if (bStart > startMins) {
@@ -181,7 +206,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const maxDuration = limitMins - startMins;
     const options: number[] = [];
     for (let d = 30; d <= maxDuration && d <= 120; d += 30) options.push(d);
+    
     const currentDur = parseInt(duration, 10);
+    // If current duration is valid but blocked by non-late booking, it won't be in options.
+    // However, if we are editing an existing booking, we might want to keep it.
     if (!isNaN(currentDur) && currentDur > 0 && !options.includes(currentDur)) {
         if (currentDur <= maxDuration || (prefill?.booking && currentDur <= 120)) {
              options.push(currentDur);
@@ -189,7 +217,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         }
     }
     return options;
-  }, [startClock, dayBookings, prefill?.booking, duration, roomId]);
+  }, [startClock, dayBookings, prefill?.booking, duration, roomId, currentTime, startDate]);
 
   const availableExtensionOptions = useMemo(() => {
     if (!prefill?.booking) return [];
@@ -250,11 +278,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setSelectedBorrowed((s) => ({ ...s, [item]: !s[item] }));
   };
 
-  const getOptimalRooms = (groupSize: number, allRooms: any[], bookings: any[], now: Date) => {
-      // 1. Filter by Capacity
-      const validRooms = allRooms.filter(r => (r.capacity || 0) >= groupSize);
+  const getOptimalRooms = (groupSize: number, allRooms: any[], bookings: any[], targetDate: Date, currentTime: Date) => {
+      // 1. Filter: groupSize <= max_people (Hard limit is max, min is recommendation)
+      const validRooms = allRooms.filter(r => (r.max_people || 0) >= groupSize);
       
-      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const targetMins = targetDate.getHours() * 60 + targetDate.getMinutes();
       const endOfDayMins = 24 * 60;
 
       const roomMetrics = validRooms.map(room => {
@@ -262,161 +290,154 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           const rId = String(room.id);
           const roomBookings = bookings.filter((b: any) => String(b.room_id) === rId);
           
-          // Find current and relevant bookings
-          let currentBooking: any = null;
-          let lastActiveBooking: any = null; // For overdue check
           let nextBookingStart = endOfDayMins;
+          let isOccupied = false;
+          let maxOverdueMinutes = 0;
+          let currentLateMinutes = 0;
+          let isLateAvailable = false;
 
           roomBookings.forEach((b: any) => {
               const start = parseISO(`${b.booking_day}T${b.start_time}`);
               const end = parseISO(`${b.booking_day}T${b.end_time}`);
               const startMins = start.getHours() * 60 + start.getMinutes();
               
-              // Check if current
-              if (now >= start && now < end) {
-                  if (b.state === 'Active' || b.state === 'Reserved') {
-                      currentBooking = b;
-                  }
-              }
-              
-              // Check for overdue (Active and ended in the past)
-              if (b.state === 'Active' && now > end) {
-                  // We want the most recent overdue one if multiple?
-                  if (!lastActiveBooking || parseISO(`${lastActiveBooking.booking_day}T${lastActiveBooking.end_time}`) < parseISO(`${b.booking_day}T${b.end_time}`)) {
-                      lastActiveBooking = b;
+              // Check if currently occupied: Use TARGET DATE for checking slot availability
+              if (targetDate >= start && targetDate < end) {
+                  if (b.state === 'Active') {
+                      isOccupied = true;
+                  } else if (b.state === 'Reserved') {
+                      // Check lateness: Use REAL CURRENT TIME for lateness calculation
+                      const lateDiff = differenceInMinutes(currentTime, start);
+                      if (lateDiff > 10) {
+                          // It is late, so it qualifies for Late Availability
+                          currentLateMinutes = lateDiff;
+                          isLateAvailable = true;
+                          // It is NOT considered "Occupied" for the filter
+                      } else {
+                          // Less than 10 mins late, still occupied
+                          isOccupied = true;
+                      }
                   }
               }
 
-              // Find next booking start
-              if (start > now) {
+              // Check for overdue (Active and ended in the past): Use REAL CURRENT TIME for overdue check
+              if (b.state === 'Active' && currentTime > end) {
+                  const ovr = differenceInMinutes(currentTime, end);
+                  if (ovr > maxOverdueMinutes) maxOverdueMinutes = ovr;
+              }
+
+              // Find next booking start: Use TARGET DATE for finding gaps
+              if (start > targetDate) {
                   if (startMins < nextBookingStart) {
                       nextBookingStart = startMins;
                   }
               }
           });
 
-          let category = 3; // Default Worst
-          let subCategoryTier2 = 0; // 1 for Reserved Late, 2 for Overdue
-          let lateArrivalMinutes = 0;
-          let overdueMinutes = 0;
-          let minutesAvailable = 0;
-
-          // Calculate Late Arrival
-          if (currentBooking && currentBooking.state === 'Reserved') {
-              const start = parseISO(`${currentBooking.booking_day}T${currentBooking.start_time}`);
-              lateArrivalMinutes = differenceInMinutes(now, start);
-          }
-
-          // Calculate Overdue
-          if (lastActiveBooking) {
-              const end = parseISO(`${lastActiveBooking.booking_day}T${lastActiveBooking.end_time}`);
-              overdueMinutes = differenceInMinutes(now, end);
-          }
-
-          // Determine Category
-          if (currentBooking) {
-              if (currentBooking.state === 'Active') {
-                  category = 3;
-              } else if (currentBooking.state === 'Reserved') {
-                  if (lateArrivalMinutes >= 30) {
-                      category = 1;
-                  } else if (lateArrivalMinutes > 10) { // 10 < late < 30
-                      category = 2;
-                      subCategoryTier2 = 1; // Reserved Late
-                  } else { // <= 10
-                      category = 3;
-                  }
-              }
-          } else {
-              // No current booking
-              if (lastActiveBooking) {
-                  category = 2;
-                  subCategoryTier2 = 2; // Overdue
-              } else {
-                  category = 1;
-              }
-          }
-
           // Calculate Minutes Available
-          minutesAvailable = nextBookingStart - nowMins;
+          // If occupied (and not late available), 0.
+          // If late available, we technically have 0 "clean" minutes, but user wants specific sorting.
+          // We will preserve minutesAvailable calculation based on next booking for display/logic,
+          // but use isLateAvailable for sorting Tier.
+          let minutesAvailable = isOccupied ? 0 : (nextBookingStart - targetMins);
           if (minutesAvailable < 0) minutesAvailable = 0;
 
-          // Maintenance
-          const hasIssues = room.dynamic_labels && room.dynamic_labels.length > 0;
-          const isOpen = room.is_open === true;
+          // Maintenance Issues
+          const issuesCount = (room.dynamic_labels || []).length;
+          const minRecommended = room.min_people || 0;
+
+          // Score Calculation
+          let score = 0;
+          if (groupSize >= minRecommended) {
+              score = minRecommended;
+          } else {
+              score = minRecommended * -1;
+          }
 
           return {
               room,
-              category,
-              subCategoryTier2,
-              hasIssues,
-              overdueMinutes,
-              lateArrivalMinutes,
+              score,
               minutesAvailable,
+              issuesCount,
+              maxOverdueMinutes,
+              currentLateMinutes,
+              isLateAvailable,
               name: room.name,
-              isOpen
+              isOccupied
           };
       });
+      
+      console.log("----- Smart Select Debug -----");
+      console.log("1. All Room Metrics (Initial):", JSON.parse(JSON.stringify(roomMetrics)));
+
+      const filteredBySize = roomMetrics.filter(m => (m.room.max_people || 0) >= groupSize);
+      console.log("2. Filtered by Size:", JSON.parse(JSON.stringify(filteredBySize)));
+      // Note: My implementation filtered `validRooms` at the start of the function which is basically step 2.
+      // But for logging purposes I'll clarify what happened.
+      const droppedBySize = allRooms.filter(r => (r.max_people || 0) < groupSize).map(r => r.name);
+      if (droppedBySize.length > 0) console.log("   Dropped by Size Limit:", droppedBySize);
+
+      const availableRooms = roomMetrics.filter(m => !m.isOccupied);
+      console.log("3. Filtered by Occupied (Available Candidates):", JSON.parse(JSON.stringify(availableRooms)));
+      const droppedByOccupied = roomMetrics.filter(m => m.isOccupied).map(m => m.name);
+      if (droppedByOccupied.length > 0) console.log("   Dropped by Occupied:", droppedByOccupied);
+
 
       // Sort
-      roomMetrics.sort((a, b) => {
-          // 1. Category ASC (1 best)
-          if (a.category !== b.category) return a.category - b.category;
+      availableRooms.sort((a, b) => {
+          // 1. Score Descending
+          if (a.score !== b.score) return b.score - a.score;
 
-          // Tier 1 Sorting
-          if (a.category === 1) {
-              // 1. Preference
-              // If GroupSize >= 4: Closed (!isOpen) first.
-              // If GroupSize < 4: Open (isOpen) first.
-              const preferClosed = groupSize >= 4;
-              const aIsPreferred = preferClosed ? !a.isOpen : a.isOpen;
-              const bIsPreferred = preferClosed ? !b.isOpen : b.isOpen;
-              
-              if (aIsPreferred !== bIsPreferred) return (bIsPreferred ? 1 : 0) - (aIsPreferred ? 1 : 0);
+          // 2. Availability Tier: "Clean" (Empty) > "Late" (Occupied but late)
+          // "Clean" means !isLateAvailable. "Late" means isLateAvailable.
+          if (a.isLateAvailable !== b.isLateAvailable) {
+              return a.isLateAvailable ? 1 : -1; // False (Clean) comes first
+          }
 
-              // 2. Time Available (Descending)
+          // 3. Within Tier
+          if (!a.isLateAvailable) {
+              // Both Clean: Time Available Descending
               if (a.minutesAvailable !== b.minutesAvailable) return b.minutesAvailable - a.minutesAvailable;
-
-              // 3. Maintenance (No issues first)
-              if (a.hasIssues !== b.hasIssues) return (a.hasIssues ? 1 : 0) - (b.hasIssues ? 1 : 0);
-
-              // 4. Alpha
-              return a.name.localeCompare(b.name);
+          } else {
+              // Both Late: Minutes Late Descending (More late is better/preferred to be overwritten)
+              if (a.currentLateMinutes !== b.currentLateMinutes) return b.currentLateMinutes - a.currentLateMinutes;
           }
 
-          // Tier 2 Sorting
-          if (a.category === 2) {
-              // Sub-category: Reserved Late (1) vs Overdue (2). Reserved Late first.
-              if (a.subCategoryTier2 !== b.subCategoryTier2) return a.subCategoryTier2 - b.subCategoryTier2;
-
-              if (a.subCategoryTier2 === 1) {
-                  // Reserved Late: Most late first
-                  if (a.lateArrivalMinutes !== b.lateArrivalMinutes) return b.lateArrivalMinutes - a.lateArrivalMinutes;
-              } else {
-                  // Overdue: Most overdue first
-                  if (a.overdueMinutes !== b.overdueMinutes) return b.overdueMinutes - a.overdueMinutes;
-              }
-              
-              // Alpha tie-breaker
-              return a.name.localeCompare(b.name);
-          }
-
-          // Tier 3 Sorting
-          if (a.category === 3) {
-              return a.name.localeCompare(b.name);
-          }
+          // 4. Overdue Priority (For clean rooms that might have previous overdue bookings?)
+          // Preference: No Overdue (0) > High Overdue (>0) > Low Overdue (>0)
+          const aOv = a.maxOverdueMinutes;
+          const bOv = b.maxOverdueMinutes;
           
-          return 0;
+          if (aOv === 0 && bOv > 0) return -1; // a is empty (better)
+          if (aOv > 0 && bOv === 0) return 1;  // b is empty (better)
+          if (aOv > 0 && bOv > 0) {
+             return bOv - aOv; // Both overdue, picking larger one first
+          }
+
+          // 5. Issues Count Ascending (Less is better)
+          if (a.issuesCount !== b.issuesCount) return a.issuesCount - b.issuesCount;
+
+          // 6. Alphabetical
+          return a.name.localeCompare(b.name);
       });
 
-      return roomMetrics.filter(m => m.category !== 3).map(m => m.room);
+      console.log("4. Final Sorted Ranking:", JSON.parse(JSON.stringify(availableRooms.map(m => ({ 
+          name: m.name, 
+          score: m.score, 
+          clean: !m.isLateAvailable, 
+          minsAvail: m.minutesAvailable, 
+          lateMins: m.currentLateMinutes 
+      })))));
+      console.log("------------------------------");
+
+      return availableRooms.map(m => m.room);
   };
 
   const handleSmartSelect = async () => {
     const sizeStr = window.prompt("Enter Group Size:");
     if (!sizeStr) return;
     const size = parseInt(sizeStr, 10);
-    if (isNaN(size)) {
+    if (isNaN(size) || size <= 0) {
         showToast("Invalid size", "Please enter a number", "error");
         return;
     }
@@ -441,10 +462,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setDayBookings(bookings);
 
     // Run Algorithm
-    const ranked = getOptimalRooms(size, rooms, bookings, targetDate);
+    const ranked = getOptimalRooms(size, rooms, bookings, targetDate, currentTime);
     
     if (ranked.length === 0) {
-        showToast("No rooms found", "No rooms match the criteria.", "info");
+        showToast("No rooms found", "No rooms available for smart suggestion.", "info");
         return;
     }
 
@@ -501,6 +522,83 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       return;
     }
 
+    // Opening/Closing Check
+    const parseTime = (t: string) => {
+        const [h, m] = t.split(':').map(Number);
+        return h * 60 + m;
+    };
+    const openMins = parseTime(openingHours.start);
+    const closeMins = parseTime(openingHours.end);
+    const bookingStartMins = parseTime(startClock);
+    const bookingEndMins = bookingStartMins + dur;
+
+    if (bookingStartMins < openMins || bookingEndMins > closeMins) {
+        showToast("Invalid time", `Booking must be between ${openingHours.start} and ${openingHours.end}`, "error");
+        return;
+    }
+
+    // Check for collision with existing bookings, handling 'late' overrides
+    const bookingsToDelete: string[] = [];
+    if (!isBulkBooking) {
+        const isLate = (b: any) => {
+            if (b.state !== 'Reserved') return false;
+            // Assuming booking_day matches startDate
+            try {
+                const bStart = parseISO(`${startDate}T${b.start_time}`);
+                const limit = addMinutes(bStart, 10);
+                return currentTime > limit;
+            } catch (e) { return false; }
+        };
+
+        const hasCollision = dayBookings.some(b => {
+             if (String(b.room_id) !== String(roomId)) return false;
+             if (prefill?.booking && String(b.id) === String(prefill.booking.id)) return false;
+             
+             const bStart = parseTime(b.start_time);
+             const bEnd = parseTime(b.end_time);
+             
+             // Check Overlap
+             // (StartA < EndB) and (EndA > StartB)
+             const overlaps = (bookingStartMins < bEnd && bookingEndMins > bStart);
+             
+             if (overlaps) {
+                 if (isLate(b)) {
+                     if (!bookingsToDelete.includes(String(b.id))) {
+                         bookingsToDelete.push(String(b.id));
+                     }
+                     return false; // Not a hard collision yet, conditionally valid
+                 }
+                 return true; // Hard collision
+             }
+             return false;
+        });
+
+        if (hasCollision) {
+             showToast("Unavailable", "This time slot is already booked.", "error");
+             return;
+        }
+
+        if (bookingsToDelete.length > 0) {
+            const ok = await confirm({
+                title: "Overwrite Late Booking?",
+                description: "This room will delete the late booking. Do you wanna proceed?",
+                confirmText: "Yes",
+                cancelText: "No",
+            });
+            if (!ok) return;
+
+             setLoading(true);
+             const { error } = await supabase.from('bookings').delete().in('id', bookingsToDelete);
+             if (error) {
+                 console.error(error);
+                 showToast("Error", "Failed to delete overlapping booking", "error");
+                 setLoading(false);
+                 return;
+             }
+             // Continue to save...
+        }
+    }
+
     const borrowed = Object.keys(selectedBorrowed).filter((k) => selectedBorrowed[k]);
 
     if (state === "Ended" && borrowed.length > 0) {
@@ -518,10 +616,31 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setLoading(true);
     try {
       const start = parseISO(`${startDate}T${startClock}`);
-      const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
-      let end = addMinutes(start, parseInt(duration, 10) + extensionMins);
 
-      if (state === 'Ended') {
+      if (state === 'Active') {
+         const startStr = format(start, "HH:mm:ss");
+         const { error: autoEndError } = await supabase
+            .from('bookings')
+            .update({ state: 'Ended' })
+            .eq('room_id', roomId)
+            .eq('booking_day', startDate)
+            .lt('start_time', startStr)
+            .neq('state', 'Ended');
+            
+         if (autoEndError) console.error("Auto-end error:", autoEndError); 
+      }
+
+      const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
+      
+      const originalDuration = parseInt(duration, 10);
+      let end = addMinutes(start, originalDuration);
+      
+      // Calculate the end time for the NEW booking if extended
+      let extendedEnd = addMinutes(end, extensionMins);
+
+      // Handle 'Ended' logic (truncating time if ending now)
+      // Only applies if NOT extending
+      if (state === 'Ended' && extensionMins === 0) {
           const now = await timeLib.getTime();
           const m = now.getMinutes();
           const roundedM = Math.round(m / 30) * 30;
@@ -529,6 +648,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           now.setSeconds(0);
           now.setMilliseconds(0);
           
+          // Truncate 'end'
           if (now < end) {
               if (now <= start) {
                    if (prefill?.booking) {
@@ -547,39 +667,90 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                   end = now;
               }
           }
+      } else if (!prefill?.booking && extensionMins > 0) {
+          // If for some reason we are creating new and extension is set (unlikely via UI but safe to handle)
+          end = extendedEnd; 
+      } else if (prefill?.booking && extensionMins === 0) {
+          // Standard update, no extension
+           // Use 'end' as calculated (possibly truncated by Ended logic above)
       }
 
       const booking_day = startDate;
-      const start_time = format(start, "HH:mm:ss");
-      const end_time = format(end, "HH:mm:ss");
-
-      const payload: any = {
+      
+      const basePayload: any = {
         room_id: parseInt(roomId, 10),
-        start_time,
-        end_time,
         booking_day,
         student_numbers: studentNumbers || null,
         borrowed_items: borrowed,
         booked_by: staffName,
-        state,
       };
 
       if (selectedCourseId && selectedCourseId !== "other") {
-        payload.course_id = parseInt(selectedCourseId, 10);
-        payload.course_name = null;
+        basePayload.course_id = parseInt(selectedCourseId, 10);
+        basePayload.course_name = null;
       } else if (selectedCourseId === "other") {
-        payload.course_id = null;
-        payload.course_name = otherCourseName || null;
+        basePayload.course_id = null;
+        basePayload.course_name = otherCourseName || null;
       } else {
-        payload.course_id = null;
-        payload.course_name = null;
+        basePayload.course_id = null;
+        basePayload.course_name = null;
       }
 
       if (prefill?.booking) {
-        const { error } = await supabase.from("bookings").update(payload).eq("id", prefill.booking.id);
-        if (error) throw error;
-        showToast("Updated", "Booking updated", "success");
+        if (extensionMins > 0) {
+             // SPLIT LOGIC
+             // 1. Update Old Booking to Ended
+             // Time: Start -> End (Original Duration)
+             const oldPayload = {
+                 ...basePayload,
+                 start_time: format(start, "HH:mm:ss"),
+                 end_time: format(end, "HH:mm:ss"),
+                 state: 'Ended'
+             };
+             
+             const { error: updateError } = await supabase.from("bookings").update(oldPayload).eq("id", prefill.booking.id);
+             if (updateError) throw updateError;
+
+             // 2. Create New Booking (Active)
+             // Time: End -> ExtendedEnd
+             const newPayload = {
+                 ...basePayload,
+                 start_time: format(end, "HH:mm:ss"),
+                 end_time: format(extendedEnd, "HH:mm:ss"),
+                 state: 'Active'
+             };
+             
+             const { error: insertError } = await supabase.from("bookings").insert(newPayload);
+             if (insertError) throw insertError;
+
+             showToast("Extended", "Booking extended (new session created)", "success");
+        } else {
+            // Standard Update
+            const payload = {
+                ...basePayload,
+                start_time: format(start, "HH:mm:ss"),
+                end_time: format(end, "HH:mm:ss"),
+                state,
+            };
+            const { error } = await supabase.from("bookings").update(payload).eq("id", prefill.booking.id);
+            if (error) throw error;
+            showToast("Updated", "Booking updated", "success");
+        }
       } else {
+        // Create New
+        // Note: New creations via this form don't usually use extension logic, 
+        // but if they did, `end` was irrelevant unless we update it.
+        // We really want start -> end (start+duration) here.
+        // If extensionMins was > 0 for new, we handled it with `end = extendedEnd` above? 
+        // Wait, line "else if (!prefill?.booking && extensionMins > 0) { end = extendedEnd; }" covers it.
+        // So `end` is correct.
+        
+        const payload = {
+            ...basePayload,
+            start_time: format(start, "HH:mm:ss"),
+            end_time: format(end, "HH:mm:ss"),
+            state,
+        };
         const { error } = await supabase.from("bookings").insert(payload);
         if (error) throw error;
         showToast("Saved", "Booking created", "success");
@@ -622,6 +793,28 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const validTimes = bulkTimes.filter(t => t.start && t.end);
     if (validDates.length === 0) newErrors.bulkDates = true;
     if (validTimes.length === 0) newErrors.bulkTimes = true;
+
+    // Validate Time Increments and Opening Hours
+    const parseTime = (t: string) => {
+        const [h, m] = t.split(':').map(Number);
+        return h * 60 + m;
+    };
+    const openMins = parseTime(openingHours.start);
+    const closeMins = parseTime(openingHours.end);
+
+    for (const t of validTimes) {
+        const sMins = parseTime(t.start);
+        const eMins = parseTime(t.end);
+        if ((sMins % 30) !== 0 || (eMins % 30) !== 0) {
+            showToast("Invalid increment", "Bulk times must be in 30-minute increments", "error");
+            return;
+        }
+        if (sMins < openMins || eMins > closeMins) {
+             showToast("Invalid time", `Bulk times must be between ${openingHours.start} and ${openingHours.end}`, "error");
+             return;
+        }
+    }
+
     if (!selectedCourseId) newErrors.selectedCourseId = true;
     if (selectedCourseId === "other" && !otherCourseName?.trim()) newErrors.otherCourseName = true;
     if (!staffName.trim()) newErrors.staffName = true;
@@ -746,6 +939,16 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const isToday = format(currentTime, "yyyy-MM-dd") === startDate;
     const [h, m] = startClock.split(':').map(Number);
     const selectedTimeMins = h * 60 + m;
+
+    const formatLateOrOverdue = (minutes: number, type: 'late' | 'overdue') => {
+        if (minutes < 60) {
+            return type === 'late' ? `${minutes} minutes late` : `Overdue ${minutes} minutes`;
+        }
+        const hours = Math.floor(minutes / 60);
+        const suffix = hours >= 1 ? `${hours} hr${hours > 1 ? 's' : ''}+` : '1 hr+';
+        return type === 'late' ? `${suffix} late` : `Overdue ${suffix}`;
+    };
+
     const overlappingBooking = dayBookings.find(b => {
         if (String(b.room_id) !== String(rId)) return false;
         if (prefill?.booking && String(b.id) === String(prefill.booking.id)) return false;
@@ -755,6 +958,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         const endMins = eh * 60 + em;
         return startMins <= selectedTimeMins && endMins > selectedTimeMins;
     });
+
     if (overlappingBooking) {
         if (overlappingBooking.state === 'Active') return { color: 'error.main', text: 'Occupied' };
         if (isToday && overlappingBooking.state === 'Reserved') {
@@ -762,12 +966,13 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              const lateThreshold = new Date(startDateObj.getTime() + 10 * 60000);
              if (currentTime > lateThreshold) {
                  const diff = Math.floor((currentTime.getTime() - startDateObj.getTime()) / 60000);
-                 return { color: 'warning.main', text: `${diff} min late` };
+                 return { color: 'warning.main', text: formatLateOrOverdue(diff, 'late') };
              }
              return { color: 'warning.light', text: 'Reserved' };
         }
         if (overlappingBooking.state === 'Reserved') return { color: 'warning.light', text: 'Reserved' };
     }
+
     if (isToday) {
         const overdueBooking = dayBookings.find(b => {
             if (String(b.room_id) !== String(rId)) return false;
@@ -778,9 +983,42 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         if (overdueBooking) {
              const endDate = new Date(`${overdueBooking.booking_day}T${overdueBooking.end_time}`);
              const diff = Math.floor((currentTime.getTime() - endDate.getTime()) / 60000);
-             return { color: 'error.main', text: `Overdue ${diff} min` };
+             return { color: 'error.main', text: formatLateOrOverdue(diff, 'overdue') };
         }
     }
+
+    // Available duration logic
+    let minNextStart = 24 * 60; 
+    dayBookings.forEach(b => {
+        if (String(b.room_id) !== String(rId)) return;
+        if (prefill?.booking && String(b.id) === String(prefill.booking.id)) return;
+        const [sh, sm] = b.start_time.split(':').map(Number);
+        const startMins = sh * 60 + sm;
+        if (startMins > selectedTimeMins && startMins < minNextStart) {
+            minNextStart = startMins;
+        }
+    });
+
+    if (minNextStart < 24 * 60) {
+        const diff = minNextStart - selectedTimeMins;
+        // Only show availability if it's 2 hours or less
+        if (diff > 0 && diff <= 120) {
+            let durationText = "";
+            if (diff === 30) durationText = "30 min";
+            else if (diff === 60) durationText = "1 hr";
+            else if (diff === 90) durationText = "1.5 hr";
+            else if (diff === 120) durationText = "2 hr";
+            else {
+                 const h = Math.floor(diff / 60);
+                 const m = diff % 60;
+                 if (h === 0) durationText = `${m} min`;
+                 else if (m === 0) durationText = `${h} hr`;
+                 else durationText = `${h} hr ${m} min`;
+            }
+            return { color: 'text.primary', text: `Available for ${durationText}` };
+        }
+    }
+
     return null;
   };
 
@@ -829,9 +1067,9 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                 <Typography variant="subtitle2">Time Ranges (HH:mm)</Typography>
                                 {bulkTimes.map((t, i) => (
                                     <Box key={i} display="flex" gap={1} mb={1} alignItems="center">
-                                        <TextField type="time" size="small" value={t.start} onChange={e => updateBulkTime(i, 'start', e.target.value)} error={!!errors.bulkTimes && !t.start} />
+                                        <TextField type="time" size="small" value={t.start} onChange={e => updateBulkTime(i, 'start', e.target.value)} error={!!errors.bulkTimes && !t.start} inputProps={{ step: 1800 }} />
                                         <Typography>to</Typography>
-                                        <TextField type="time" size="small" value={t.end} onChange={e => updateBulkTime(i, 'end', e.target.value)} error={!!errors.bulkTimes && !t.end} />
+                                        <TextField type="time" size="small" value={t.end} onChange={e => updateBulkTime(i, 'end', e.target.value)} error={!!errors.bulkTimes && !t.end} inputProps={{ step: 1800 }} />
                                         <IconButton onClick={() => removeBulkTime(i)}><CloseIcon /></IconButton>
                                     </Box>
                                 ))}
@@ -845,6 +1083,9 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                     ))}
                                 </Box>
                                 {errors.bulkRooms && <FormHelperText error>Select at least one room</FormHelperText>}
+                            </Grid>
+                            <Grid item xs={12}>
+                                <TextField fullWidth label="Staff Name" value={staffName} onChange={e => setStaffName(e.target.value)} error={!!errors.staffName} />
                             </Grid>
                         </>
                     ) : (
@@ -888,7 +1129,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                 <TextField type="date" fullWidth label="Date" value={startDate} onChange={e => setStartDate(e.target.value)} error={!!errors.startDate} InputLabelProps={{ shrink: true }} />
                             </Grid>
                             <Grid item xs={6}>
-                                <TextField type="time" fullWidth label="Start Time" value={startClock} onChange={e => setStartClock(e.target.value)} error={!!errors.startClock} InputLabelProps={{ shrink: true }} />
+                                <TextField type="time" fullWidth label="Start Time" value={startClock} onChange={e => setStartClock(e.target.value)} error={!!errors.startClock} InputLabelProps={{ shrink: true }} inputProps={{ step: 1800 }} />
                             </Grid>
                             <Grid item xs={6}>
                                 <TextField select fullWidth label="Duration" value={duration} onChange={e => setDuration(e.target.value)} error={!!errors.duration}>
