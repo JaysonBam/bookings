@@ -261,19 +261,19 @@ export default function SettingsPage() {
   }
 
   return (
-    <Box sx={{ bgcolor: "background.default", minHeight: "100%", pb: 4 }}>
-      <Container maxWidth="xl">
+    <Box sx={{ bgcolor: "background.default", minHeight: "100%", pb: { xs: 8, md: 12 } }}>
+      <Container maxWidth="xl" sx={{ px: { xs: 1, md: 3 }, pt: { xs: 2, md: 3 } }}>
         {/* Sticky Utility Bar */}
         <Paper 
           sx={{ 
-            p: 2, 
+            p: { xs: 1.5, md: 2 }, 
             position: 'sticky', 
             top: 0, 
             zIndex: 10, 
             display: 'flex', 
             justifyContent: 'space-between', 
             alignItems: 'center', 
-            mb: 3,
+            mb: { xs: 2, md: 3 },
             mt: 0 
           }}
           elevation={2}

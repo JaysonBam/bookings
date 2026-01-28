@@ -126,11 +126,11 @@ export default function MaintenancePage() {
   }
 
   return (
-    <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: 4 }}>
-      <Container maxWidth="xl">
+    <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 8, md: 12 } }}>
+      <Container maxWidth="xl" sx={{ px: { xs: 1, md: 3 }, pt: { xs: 2, md: 3 } }}>
         
         {/* Summary Stats */}
-        <Grid container spacing={2} sx={{ mb: 2, mt: 0 }}>
+        <Grid container spacing={{ xs: 2, md: 3 }} sx={{ mb: { xs: 2, md: 4 } }}>
             <Grid item xs={12} md={4}>
                 <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                      <Box>
