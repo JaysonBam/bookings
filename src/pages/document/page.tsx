@@ -391,7 +391,7 @@ export default function DocumentPage() {
                                         <li><strong>Add User:</strong> Enter the user's specific <strong>Gmail address</strong> (not an alias) to grant them access.</li>
                                         <li><strong>Permissions:</strong> Checkboxes determine what the user can do (Settings, Authorization, Analytics).</li>
                                         <li><strong>Pending Status:</strong> Means the user has been registered but hasn't logged in yet. They must log in once to confirm the account is active.</li>
-                                        <li>Please see the <strong>Access Page</strong> for more comprehensive details.</li>
+                                        <li>Please see the <strong>Manage Users Page</strong> for more comprehensive details.</li>
                                     </Box>
                                 </Box>
 
