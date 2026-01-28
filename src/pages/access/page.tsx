@@ -315,21 +315,62 @@ export default function AccessPage() {
 
   return (
     <Box sx={styles.root}>
-      <Box sx={styles.header}>
-        <Box>
-            <Header title="User Management" />
-          <Typography variant="body1" sx={styles.subtitle}>
-            Manage user access and permissions for the application
-          </Typography>
-        </Box>
-        <Button 
-          variant="contained" 
-          startIcon={<AddIcon />}
-          onClick={() => setOpenModal(true)}
-          fullWidth={isMobile}
+      <Header title="User Management" />
+
+      <Box sx={{ mb: 4, mt: 2 }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-start" justifyContent="space-between">
+            <Box sx={{ maxWidth: '800px' }}>
+                <Typography variant="body1" sx={{ color: 'text.primary', mb: 1 }}>
+                    All users have <strong>viewer access</strong> to Bookings, Management, Bugs, and Documentation by default.
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                   Use the table below to toggle advanced administration privileges.
+                </Typography>
+            </Box>
+             <Button 
+                variant="contained" 
+                startIcon={<AddIcon />}
+                onClick={() => setOpenModal(true)}
+                fullWidth={isMobile}
+                sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
+            >
+                Add User
+            </Button>
+        </Stack>
+
+        <Paper 
+            variant="outlined" 
+            sx={{ 
+                mt: 3, 
+                p: 2, 
+                bgcolor: 'background.default',
+                borderRadius: 2
+            }}
         >
-          Add User
-        </Button>
+            <Stack 
+                direction={{ xs: 'column', md: 'row' }} 
+                spacing={{ xs: 3, md: 2 }}
+                divider={<Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', md: 'block' } }} />}
+            >
+                <Box sx={{ flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'primary.main', mb: 0.5, letterSpacing: 0.5 }}>ACCESS</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>User Management</Typography>
+                    <Typography variant="caption" color="text.secondary">Manage system administrators and user permissions.</Typography>
+                </Box>
+                
+                <Box sx={{ flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'primary.main', mb: 0.5, letterSpacing: 0.5 }}>SETTINGS</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>System Configuration</Typography>
+                    <Typography variant="caption" color="text.secondary">Modify global settings, room configurations, and course details.</Typography>
+                </Box>
+
+                <Box sx={{ flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'primary.main', mb: 0.5, letterSpacing: 0.5 }}>ANALYTICS</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>Data Insights</Typography>
+                    <Typography variant="caption" color="text.secondary">View usage statistics and download reports.</Typography>
+                </Box>
+            </Stack>
+        </Paper>
       </Box>
 
       {loading ? (
@@ -345,13 +386,15 @@ export default function AccessPage() {
         <Box sx={styles.modalContent} component="form" onSubmit={handleAddUser}>
           <Typography variant="h6" sx={{ mb: 2 }}>Add New User</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Enter the email address of the user you want to grant access to.
+            Please enter the user's primary Google account (Gmail address).
+            <br />
+            <strong>Note:</strong> Ensure it is the actual email address (e.g., <code>u12345678@tuks.co.za</code>) and not an alias (like <code>john.smith@tuks.co.za</code>).
           </Typography>
           
           <Stack spacing={2}>
             {addError && <Alert severity="error">{addError}</Alert>}
             <TextField 
-              label="Email Address" 
+              label="Gmail Address" 
               type="email" 
               fullWidth 
               required

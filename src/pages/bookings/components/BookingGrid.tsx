@@ -117,13 +117,11 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
 
   const fetchBookings = useCallback(async (dateStr: string) => {
       try {
-        console.log("Fetching bookings for:", dateStr);
         const { data: bookingsData, error: bookingsErr } = await supabase
           .from("bookings")
           .select(`*, courses(id, name, color_hex)`)
           .eq("booking_day", dateStr);
         if (bookingsErr) { console.error("Error loading bookings:", bookingsErr); setLoading(false); return; }
-        console.log("Fetched bookings:", bookingsData?.length);
         if (bookingsData) {
           const mapped = (bookingsData as any[]).map((b) => {
             const startIso = `${b.booking_day}T${(b.start_time || "").slice(0,8)}`;
@@ -170,7 +168,6 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bookings' },
         (payload: any) => {
-          console.log('Realtime update received:', payload);
           if (payload.new && payload.new.booking_day === dateStr) {
                fetchBookings(dateStr);
           } else if (payload.old) {
@@ -178,9 +175,8 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
           }
         }
       )
-      .subscribe((status) => {
-        console.log(`Realtime subscription status for ${dateStr}:`, status);
-        if (status === 'CLOSED') console.log(`Realtime subscription status for ${dateStr}: CLOSED`);
+      .subscribe(() => {
+        // status subscription logic
       });
 
     return () => {
@@ -233,15 +229,20 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
                 key={r.id} 
                 sx={{ 
                     backgroundColor: hoveredCell.roomId === r.id ? 'action.hover' : 'background.paper',
-                    color: hoveredCell.roomId === r.id ? 'primary.main' : 'inherit'
+                    color: hoveredCell.roomId === r.id ? 'primary.main' : 'inherit',
+                    verticalAlign: 'bottom'
                 }}
               >
-                <div style={{ fontWeight: 'bold' }}>{r.name}</div>
-                {r.dynamic_labels && r.dynamic_labels.length > 0 && (
-                  <div style={{ fontSize: '0.75rem', fontWeight: 'normal', marginTop: '2px' }}>
-                    {r.dynamic_labels.map(l => l.split(' ').pop()).join(' ')}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <div style={{ fontWeight: 'bold' }}>{r.name}</div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 'normal', marginTop: '2px', minHeight: '1.2em' }}>
+                    {r.dynamic_labels && r.dynamic_labels.length > 0 ? (
+                      r.dynamic_labels.map(l => l.split(' ').pop()).join(' ')
+                    ) : (
+                      '\u00A0'
+                    )}
                   </div>
-                )}
+                </div>
               </StyledHeaderCell>
             ))}
           </TableRow>

@@ -52,6 +52,22 @@ const BookingsContent = () => {
     const [refreshGridTrigger, setRefreshGridTrigger] = useState(0);
     const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Static data caching
+    const [rooms, setRooms] = useState<any[]>([]);
+    const [courses, setCourses] = useState<any[]>([]);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            const [{ data: roomsData }, { data: coursesData }] = await Promise.all([
+                supabase.from("rooms").select("id,name,borrowable_items,is_available,dynamic_labels,capacity,is_open").order("name"),
+                supabase.from("courses").select("id,name").order("name"),
+            ]);
+            setRooms((roomsData || []).filter((r: any) => r.is_available !== false).map((r: any) => ({ ...r, id: String(r.id) })));
+            setCourses(coursesData || []);
+        };
+        fetchData();
+    }, []);
+
     const handleBookingSelect = (id: string) => {
         setHighlightedBookingId(id);
         if (highlightTimeoutRef.current) {
@@ -213,12 +229,15 @@ const BookingsContent = () => {
             </StyledContentContainer>
 
             <BookingPanel
+                key={panelOpen ? (panelData?.booking?.id ? `edit-${panelData.booking.id}` : `new-${panelData?.roomId || ''}-${panelData?.timeSlot || ''}`) : 'closed'}
                 open={panelOpen}
                 onClose={() => { setPanelOpen(false); setPanelData(null); }}
                 prefill={panelData}
                 defaultStaffName={currentUser}
                 showToast={showToast}
                 onBookingUpdate={() => setRefreshGridTrigger(prev => prev + 1)}
+                rooms={rooms}
+                courses={courses}
             />
              <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={handleSnackbarClose}>
                 <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
