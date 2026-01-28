@@ -177,9 +177,24 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     };
     const startMins = parseTime(startClock);
     let limitMins = 24 * 60;
+    
+    const isLate = (b: any) => {
+        if (b.state !== 'Reserved') return false;
+        if (b.booking_day !== startDate) return false;
+        try {
+            const bStart = parseISO(`${b.booking_day}T${b.start_time}`);
+            const limit = addMinutes(bStart, 10);
+            return currentTime > limit;
+        } catch (e) { return false; }
+    };
+
     for (const b of dayBookings) {
       if (String(b.room_id) !== String(roomId)) continue;
       if (prefill?.booking && String(b.id) === String(prefill.booking.id)) continue;
+      
+      // Ignore late bookings for duration availability
+      if (isLate(b)) continue;
+
       const bStart = parseTime(b.start_time);
       const bEnd = parseTime(b.end_time);
       if (bStart > startMins) {
@@ -191,7 +206,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const maxDuration = limitMins - startMins;
     const options: number[] = [];
     for (let d = 30; d <= maxDuration && d <= 120; d += 30) options.push(d);
+    
     const currentDur = parseInt(duration, 10);
+    // If current duration is valid but blocked by non-late booking, it won't be in options.
+    // However, if we are editing an existing booking, we might want to keep it.
     if (!isNaN(currentDur) && currentDur > 0 && !options.includes(currentDur)) {
         if (currentDur <= maxDuration || (prefill?.booking && currentDur <= 120)) {
              options.push(currentDur);
@@ -199,7 +217,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         }
     }
     return options;
-  }, [startClock, dayBookings, prefill?.booking, duration, roomId]);
+  }, [startClock, dayBookings, prefill?.booking, duration, roomId, currentTime, startDate]);
 
   const availableExtensionOptions = useMemo(() => {
     if (!prefill?.booking) return [];
@@ -260,11 +278,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setSelectedBorrowed((s) => ({ ...s, [item]: !s[item] }));
   };
 
-  const getOptimalRooms = (groupSize: number, allRooms: any[], bookings: any[], now: Date) => {
+  const getOptimalRooms = (groupSize: number, allRooms: any[], bookings: any[], targetDate: Date, currentTime: Date) => {
       // 1. Filter: groupSize <= max_people (Hard limit is max, min is recommendation)
       const validRooms = allRooms.filter(r => (r.max_people || 0) >= groupSize);
       
-      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const targetMins = targetDate.getHours() * 60 + targetDate.getMinutes();
       const endOfDayMins = 24 * 60;
 
       const roomMetrics = validRooms.map(room => {
@@ -275,27 +293,41 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           let nextBookingStart = endOfDayMins;
           let isOccupied = false;
           let maxOverdueMinutes = 0;
+          let currentLateMinutes = 0;
+          let isLateAvailable = false;
 
           roomBookings.forEach((b: any) => {
               const start = parseISO(`${b.booking_day}T${b.start_time}`);
               const end = parseISO(`${b.booking_day}T${b.end_time}`);
               const startMins = start.getHours() * 60 + start.getMinutes();
               
-              // Check if currently occupied
-              if (now >= start && now < end) {
-                  if (b.state === 'Active' || b.state === 'Reserved') {
+              // Check if currently occupied: Use TARGET DATE for checking slot availability
+              if (targetDate >= start && targetDate < end) {
+                  if (b.state === 'Active') {
                       isOccupied = true;
+                  } else if (b.state === 'Reserved') {
+                      // Check lateness: Use REAL CURRENT TIME for lateness calculation
+                      const lateDiff = differenceInMinutes(currentTime, start);
+                      if (lateDiff > 10) {
+                          // It is late, so it qualifies for Late Availability
+                          currentLateMinutes = lateDiff;
+                          isLateAvailable = true;
+                          // It is NOT considered "Occupied" for the filter
+                      } else {
+                          // Less than 10 mins late, still occupied
+                          isOccupied = true;
+                      }
                   }
               }
 
-              // Check for overdue (Active and ended in the past)
-              if (b.state === 'Active' && now > end) {
-                  const ovr = differenceInMinutes(now, end);
+              // Check for overdue (Active and ended in the past): Use REAL CURRENT TIME for overdue check
+              if (b.state === 'Active' && currentTime > end) {
+                  const ovr = differenceInMinutes(currentTime, end);
                   if (ovr > maxOverdueMinutes) maxOverdueMinutes = ovr;
               }
 
-              // Find next booking start
-              if (start > now) {
+              // Find next booking start: Use TARGET DATE for finding gaps
+              if (start > targetDate) {
                   if (startMins < nextBookingStart) {
                       nextBookingStart = startMins;
                   }
@@ -303,7 +335,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           });
 
           // Calculate Minutes Available
-          let minutesAvailable = isOccupied ? 0 : (nextBookingStart - nowMins);
+          // If occupied (and not late available), 0.
+          // If late available, we technically have 0 "clean" minutes, but user wants specific sorting.
+          // We will preserve minutesAvailable calculation based on next booking for display/logic,
+          // but use isLateAvailable for sorting Tier.
+          let minutesAvailable = isOccupied ? 0 : (nextBookingStart - targetMins);
           if (minutesAvailable < 0) minutesAvailable = 0;
 
           // Maintenance Issues
@@ -324,22 +360,50 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
               minutesAvailable,
               issuesCount,
               maxOverdueMinutes,
+              currentLateMinutes,
+              isLateAvailable,
               name: room.name,
               isOccupied
           };
       });
+      
+      console.log("----- Smart Select Debug -----");
+      console.log("1. All Room Metrics (Initial):", JSON.parse(JSON.stringify(roomMetrics)));
+
+      const filteredBySize = roomMetrics.filter(m => (m.room.max_people || 0) >= groupSize);
+      console.log("2. Filtered by Size:", JSON.parse(JSON.stringify(filteredBySize)));
+      // Note: My implementation filtered `validRooms` at the start of the function which is basically step 2.
+      // But for logging purposes I'll clarify what happened.
+      const droppedBySize = allRooms.filter(r => (r.max_people || 0) < groupSize).map(r => r.name);
+      if (droppedBySize.length > 0) console.log("   Dropped by Size Limit:", droppedBySize);
 
       const availableRooms = roomMetrics.filter(m => !m.isOccupied);
+      console.log("3. Filtered by Occupied (Available Candidates):", JSON.parse(JSON.stringify(availableRooms)));
+      const droppedByOccupied = roomMetrics.filter(m => m.isOccupied).map(m => m.name);
+      if (droppedByOccupied.length > 0) console.log("   Dropped by Occupied:", droppedByOccupied);
+
 
       // Sort
       availableRooms.sort((a, b) => {
           // 1. Score Descending
           if (a.score !== b.score) return b.score - a.score;
 
-          // 2. Time Available Descending
-          if (a.minutesAvailable !== b.minutesAvailable) return b.minutesAvailable - a.minutesAvailable;
+          // 2. Availability Tier: "Clean" (Empty) > "Late" (Occupied but late)
+          // "Clean" means !isLateAvailable. "Late" means isLateAvailable.
+          if (a.isLateAvailable !== b.isLateAvailable) {
+              return a.isLateAvailable ? 1 : -1; // False (Clean) comes first
+          }
 
-          // 3. Overdue Priority
+          // 3. Within Tier
+          if (!a.isLateAvailable) {
+              // Both Clean: Time Available Descending
+              if (a.minutesAvailable !== b.minutesAvailable) return b.minutesAvailable - a.minutesAvailable;
+          } else {
+              // Both Late: Minutes Late Descending (More late is better/preferred to be overwritten)
+              if (a.currentLateMinutes !== b.currentLateMinutes) return b.currentLateMinutes - a.currentLateMinutes;
+          }
+
+          // 4. Overdue Priority (For clean rooms that might have previous overdue bookings?)
           // Preference: No Overdue (0) > High Overdue (>0) > Low Overdue (>0)
           const aOv = a.maxOverdueMinutes;
           const bOv = b.maxOverdueMinutes;
@@ -350,12 +414,21 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              return bOv - aOv; // Both overdue, picking larger one first
           }
 
-          // 4. Issues Count Ascending (Less is better)
+          // 5. Issues Count Ascending (Less is better)
           if (a.issuesCount !== b.issuesCount) return a.issuesCount - b.issuesCount;
 
-          // 5. Alphabetical
+          // 6. Alphabetical
           return a.name.localeCompare(b.name);
       });
+
+      console.log("4. Final Sorted Ranking:", JSON.parse(JSON.stringify(availableRooms.map(m => ({ 
+          name: m.name, 
+          score: m.score, 
+          clean: !m.isLateAvailable, 
+          minsAvail: m.minutesAvailable, 
+          lateMins: m.currentLateMinutes 
+      })))));
+      console.log("------------------------------");
 
       return availableRooms.map(m => m.room);
   };
@@ -389,7 +462,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setDayBookings(bookings);
 
     // Run Algorithm
-    const ranked = getOptimalRooms(size, rooms, bookings, targetDate);
+    const ranked = getOptimalRooms(size, rooms, bookings, targetDate, currentTime);
     
     if (ranked.length === 0) {
         showToast("No rooms found", "No rooms available for smart suggestion.", "info");
@@ -462,6 +535,68 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     if (bookingStartMins < openMins || bookingEndMins > closeMins) {
         showToast("Invalid time", `Booking must be between ${openingHours.start} and ${openingHours.end}`, "error");
         return;
+    }
+
+    // Check for collision with existing bookings, handling 'late' overrides
+    const bookingsToDelete: string[] = [];
+    if (!isBulkBooking) {
+        const isLate = (b: any) => {
+            if (b.state !== 'Reserved') return false;
+            // Assuming booking_day matches startDate
+            try {
+                const bStart = parseISO(`${startDate}T${b.start_time}`);
+                const limit = addMinutes(bStart, 10);
+                return currentTime > limit;
+            } catch (e) { return false; }
+        };
+
+        const hasCollision = dayBookings.some(b => {
+             if (String(b.room_id) !== String(roomId)) return false;
+             if (prefill?.booking && String(b.id) === String(prefill.booking.id)) return false;
+             
+             const bStart = parseTime(b.start_time);
+             const bEnd = parseTime(b.end_time);
+             
+             // Check Overlap
+             // (StartA < EndB) and (EndA > StartB)
+             const overlaps = (bookingStartMins < bEnd && bookingEndMins > bStart);
+             
+             if (overlaps) {
+                 if (isLate(b)) {
+                     if (!bookingsToDelete.includes(String(b.id))) {
+                         bookingsToDelete.push(String(b.id));
+                     }
+                     return false; // Not a hard collision yet, conditionally valid
+                 }
+                 return true; // Hard collision
+             }
+             return false;
+        });
+
+        if (hasCollision) {
+             showToast("Unavailable", "This time slot is already booked.", "error");
+             return;
+        }
+
+        if (bookingsToDelete.length > 0) {
+            const ok = await confirm({
+                title: "Overwrite Late Booking?",
+                description: "This room will delete the late booking. Do you wanna proceed?",
+                confirmText: "Yes",
+                cancelText: "No",
+            });
+            if (!ok) return;
+
+             setLoading(true);
+             const { error } = await supabase.from('bookings').delete().in('id', bookingsToDelete);
+             if (error) {
+                 console.error(error);
+                 showToast("Error", "Failed to delete overlapping booking", "error");
+                 setLoading(false);
+                 return;
+             }
+             // Continue to save...
+        }
     }
 
     const borrowed = Object.keys(selectedBorrowed).filter((k) => selectedBorrowed[k]);
