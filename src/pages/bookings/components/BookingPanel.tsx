@@ -616,6 +616,20 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setLoading(true);
     try {
       const start = parseISO(`${startDate}T${startClock}`);
+
+      if (state === 'Active') {
+         const startStr = format(start, "HH:mm:ss");
+         const { error: autoEndError } = await supabase
+            .from('bookings')
+            .update({ state: 'Ended' })
+            .eq('room_id', roomId)
+            .eq('booking_day', startDate)
+            .lt('start_time', startStr)
+            .neq('state', 'Ended');
+            
+         if (autoEndError) console.error("Auto-end error:", autoEndError); 
+      }
+
       const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
       
       const originalDuration = parseInt(duration, 10);
