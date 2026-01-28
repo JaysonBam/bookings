@@ -939,6 +939,16 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const isToday = format(currentTime, "yyyy-MM-dd") === startDate;
     const [h, m] = startClock.split(':').map(Number);
     const selectedTimeMins = h * 60 + m;
+
+    const formatLateOrOverdue = (minutes: number, type: 'late' | 'overdue') => {
+        if (minutes < 60) {
+            return type === 'late' ? `${minutes} minutes late` : `Overdue ${minutes} minutes`;
+        }
+        const hours = Math.floor(minutes / 60);
+        const suffix = hours >= 1 ? `${hours} hr${hours > 1 ? 's' : ''}+` : '1 hr+';
+        return type === 'late' ? `${suffix} late` : `Overdue ${suffix}`;
+    };
+
     const overlappingBooking = dayBookings.find(b => {
         if (String(b.room_id) !== String(rId)) return false;
         if (prefill?.booking && String(b.id) === String(prefill.booking.id)) return false;
@@ -948,6 +958,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         const endMins = eh * 60 + em;
         return startMins <= selectedTimeMins && endMins > selectedTimeMins;
     });
+
     if (overlappingBooking) {
         if (overlappingBooking.state === 'Active') return { color: 'error.main', text: 'Occupied' };
         if (isToday && overlappingBooking.state === 'Reserved') {
@@ -955,12 +966,13 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              const lateThreshold = new Date(startDateObj.getTime() + 10 * 60000);
              if (currentTime > lateThreshold) {
                  const diff = Math.floor((currentTime.getTime() - startDateObj.getTime()) / 60000);
-                 return { color: 'warning.main', text: `${diff} min late` };
+                 return { color: 'warning.main', text: formatLateOrOverdue(diff, 'late') };
              }
              return { color: 'warning.light', text: 'Reserved' };
         }
         if (overlappingBooking.state === 'Reserved') return { color: 'warning.light', text: 'Reserved' };
     }
+
     if (isToday) {
         const overdueBooking = dayBookings.find(b => {
             if (String(b.room_id) !== String(rId)) return false;
@@ -971,9 +983,42 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         if (overdueBooking) {
              const endDate = new Date(`${overdueBooking.booking_day}T${overdueBooking.end_time}`);
              const diff = Math.floor((currentTime.getTime() - endDate.getTime()) / 60000);
-             return { color: 'error.main', text: `Overdue ${diff} min` };
+             return { color: 'error.main', text: formatLateOrOverdue(diff, 'overdue') };
         }
     }
+
+    // Available duration logic
+    let minNextStart = 24 * 60; 
+    dayBookings.forEach(b => {
+        if (String(b.room_id) !== String(rId)) return;
+        if (prefill?.booking && String(b.id) === String(prefill.booking.id)) return;
+        const [sh, sm] = b.start_time.split(':').map(Number);
+        const startMins = sh * 60 + sm;
+        if (startMins > selectedTimeMins && startMins < minNextStart) {
+            minNextStart = startMins;
+        }
+    });
+
+    if (minNextStart < 24 * 60) {
+        const diff = minNextStart - selectedTimeMins;
+        // Only show availability if it's 2 hours or less
+        if (diff > 0 && diff <= 120) {
+            let durationText = "";
+            if (diff === 30) durationText = "30 min";
+            else if (diff === 60) durationText = "1 hr";
+            else if (diff === 90) durationText = "1.5 hr";
+            else if (diff === 120) durationText = "2 hr";
+            else {
+                 const h = Math.floor(diff / 60);
+                 const m = diff % 60;
+                 if (h === 0) durationText = `${m} min`;
+                 else if (m === 0) durationText = `${h} hr`;
+                 else durationText = `${h} hr ${m} min`;
+            }
+            return { color: 'text.primary', text: `Available for ${durationText}` };
+        }
+    }
+
     return null;
   };
 
