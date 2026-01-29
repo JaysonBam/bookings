@@ -118,75 +118,118 @@ const BookingsContent = () => {
 
     const handleQuickAction = async (bookingId: string, action: 'activate' | 'end') => {
         try {
+            // Fetch booking to check valid bulk ID
+            const { data: booking, error: fetchError } = await supabase
+                .from('bookings')
+                .select('start_time, end_time, booking_day, borrowed_items, bulk_booking_id')
+                .eq('id', bookingId)
+                .single();
+
+            if (fetchError || !booking) throw fetchError || new Error("Booking not found");
+
+            let scope = 'single';
+            if (booking.bulk_booking_id) {
+                 const result = await confirm({
+                     title: action === 'activate' ? "Activate Booking" : "End Booking",
+                     description: `This booking is part of a bulk group.`,
+                     cancelText: "Cancel",
+                     actions: [
+                         { label: `${action === 'activate' ? 'Activate' : 'End'} This Only`, value: 'single', variant: 'outlined' },
+                         { label: `${action === 'activate' ? 'Activate' : 'End'} Entire Group`, value: 'group', variant: 'contained' }
+                     ]
+                 });
+                 if (!result) return;
+                 scope = result;
+            }
+
             const newState = action === 'activate' ? 'Active' : 'Ended';
 
             if (action === 'end') {
-                const { data: booking, error: fetchError } = await supabase
-                    .from('bookings')
-                    .select('start_time, end_time, booking_day, borrowed_items')
-                    .eq('id', bookingId)
-                    .single();
-
-                if (fetchError) throw fetchError;
-
-                if (booking?.borrowed_items && booking.borrowed_items.length > 0) {
-                    const lowercasedItems = booking.borrowed_items.map((item: string) => item.toLowerCase());
-                    const itemsList = lowercasedItems.join(', ');
-                    const lastIndex = itemsList.lastIndexOf(', ');
-                    const formattedList = lastIndex !== -1 
-                        ? itemsList.substring(0, lastIndex) + ' and ' + itemsList.substring(lastIndex + 2)
-                        : itemsList;
-                    
-                    const verb = lowercasedItems.length === 1 ? 'Is' : 'Are';
-                    const returned = await confirm({
-                        title: "Confirm Return",
-                        description: `${verb} ${formattedList} returned?`,
-                        confirmText: "Yes",
-                        cancelText: "No",
-                    });
-                    if (!returned) return;
-                }
-
-                // Truncate logic
-                const now = await timeLib.getTime();
-                const m = now.getMinutes();
-                const roundedM = Math.round(m / 30) * 30;
-                now.setMinutes(roundedM);
-                now.setSeconds(0);
-                now.setMilliseconds(0);
-
-                const bookingEnd = parseISO(`${booking.booking_day}T${booking.end_time}`);
-                const bookingStart = parseISO(`${booking.booking_day}T${booking.start_time}`);
-
-                if (now < bookingEnd) {
-                    if (now <= bookingStart) {
-                         // Delete
-                         const { error } = await supabase.from('bookings').delete().eq('id', bookingId);
-                         if (error) throw error;
-                         showToast("Deleted", "Booking deleted (ended before start time)", "info");
-                         return;
-                    } else {
-                        // Truncate
-                        const newEndTime = format(now, "HH:mm:ss");
-                        const { error } = await supabase
-                            .from('bookings')
-                            .update({ state: newState, end_time: newEndTime })
-                            .eq('id', bookingId);
-                        if (error) throw error;
-                        showToast("Success", `Booking ended early at ${format(now, "HH:mm")}`, "success");
-                        return;
+                // If it's a group end action, we apply simple state update to End time, or complex logic?
+                // The user requested "delete this booking or delete all booking".
+                // Logic: If ending early, we might encounter complications with distinct start/end times in a group.
+                // Simplification for group: Just set state to Ended. We can't intelligently truncate time for 50 different bookings at once easily without more inputs.
+                // However, for single booking, we keep the truncation logic.
+                
+                if (scope === 'single') {
+                    if (booking?.borrowed_items && booking.borrowed_items.length > 0) {
+                        const lowercasedItems = booking.borrowed_items.map((item: string) => item.toLowerCase());
+                        const itemsList = lowercasedItems.join(', ');
+                        const lastIndex = itemsList.lastIndexOf(', ');
+                        const formattedList = lastIndex !== -1 
+                            ? itemsList.substring(0, lastIndex) + ' and ' + itemsList.substring(lastIndex + 2)
+                            : itemsList;
+                        
+                        const verb = lowercasedItems.length === 1 ? 'Is' : 'Are';
+                        const returned = await confirm({
+                            title: "Confirm Return",
+                            description: `${verb} ${formattedList} returned?`,
+                            confirmText: "Yes",
+                            cancelText: "No",
+                        });
+                        if (!returned) return;
                     }
+
+                    // Truncate logic
+                    const now = await timeLib.getTime();
+                    const m = now.getMinutes();
+                    const roundedM = Math.round(m / 30) * 30;
+                    now.setMinutes(roundedM);
+                    now.setSeconds(0);
+                    now.setMilliseconds(0);
+
+                    const bookingEnd = parseISO(`${booking.booking_day}T${booking.end_time}`);
+                    const bookingStart = parseISO(`${booking.booking_day}T${booking.start_time}`);
+
+                    if (now < bookingEnd) {
+                        if (now <= bookingStart) {
+                             // Delete
+                             const { error } = await supabase.from('bookings').delete().eq('id', bookingId);
+                             if (error) throw error;
+                             showToast("Deleted", "Booking deleted (ended before start time)", "info");
+                             return;
+                        } else {
+                            // Truncate
+                            const newEndTime = format(now, "HH:mm:ss");
+                            const { error } = await supabase
+                                .from('bookings')
+                                .update({ state: newState, end_time: newEndTime })
+                                .eq('id', bookingId);
+                            if (error) throw error;
+                            showToast("Success", `Booking ended early at ${format(now, "HH:mm")}`, "success");
+                            return;
+                        }
+                    }
+                } else {
+                    // Group End
+                    // We just end them. We don't truncate time because they might be on different days or times.
+                    // Just marking them as 'Ended' stops them from being Active.
+                    const { error } = await supabase
+                        .from('bookings')
+                        .update({ state: newState })
+                        .eq('bulk_booking_id', booking.bulk_booking_id);
+                    if (error) throw error;
+                    showToast("Success", `Group ended`, "success");
+                    return;
                 }
             }
 
-            const { error } = await supabase
-                .from('bookings')
-                .update({ state: newState })
-                .eq('id', bookingId);
-
-            if (error) throw error;
-            
-            showToast("Success", `Booking ${newState.toLowerCase()}`, "success");
+            // ACTIVATE Logic
+            if (scope === 'group') {
+                const { error } = await supabase
+                    .from('bookings')
+                    .update({ state: newState })
+                    .eq('bulk_booking_id', booking.bulk_booking_id);
+                if (error) throw error;
+                 showToast("Success", `Group ${newState.toLowerCase()}`, "success");
+            } else {
+                const { error } = await supabase
+                    .from('bookings')
+                    .update({ state: newState })
+                    .eq('id', bookingId);
+                if (error) throw error;
+                 showToast("Success", `Booking ${newState.toLowerCase()}`, "success");
+            }
         } catch (err: any) {
             console.error("Quick action failed", err);
             showToast("Error", "Failed to update booking", "error");

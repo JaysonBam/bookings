@@ -73,6 +73,31 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
   const [studentNumbers, setStudentNumbers] = useState<string>(() => prefill?.booking?.student_numbers || "");
 
+  // Bulk Student Count Logic
+  const [totalStudents, setTotalStudents] = useState<string>("");
+  const [isBulkCount, setIsBulkCount] = useState(false);
+
+  useEffect(() => {
+    const raw = prefill?.booking?.student_numbers || "";
+    // Regex to match "bulk booking - [UUID] - [count]"
+    // UUID regex approx: [0-9a-fA-F-]+
+    const match = raw.match(/^bulk booking - ([0-9a-fA-F-]+) - (\d+)$/);
+    
+    // If it matches OR if it's a known bulk group (even without count yet), we verify logic
+    // The user wants: in edit stage, if bulk group, use Total Students.
+    if (prefill?.booking?.bulk_booking_id) {
+        setIsBulkCount(true);
+        if (match) {
+            setTotalStudents(match[2]);
+        } else {
+            setTotalStudents(""); // Empty initially
+        }
+    } else {
+        setIsBulkCount(false);
+        setTotalStudents("");
+    }
+  }, [prefill?.booking]);
+
   const [selectedCourseId, setSelectedCourseId] = useState<string>(() => {
       if (prefill?.booking?.course_id) return String(prefill.booking.course_id)
       if (prefill?.booking?.course_name) return "other"
@@ -109,6 +134,24 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
   const [dayBookings, setDayBookings] = useState<any[]>([]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
+
+  // Bulk Edit State (distinct from Creating Bulk Booking)
+  const [isBulkEdit, setIsBulkEdit] = useState(false);
+  const [bulkGroupBookings, setBulkGroupBookings] = useState<any[]>([]);
+
+  useEffect(() => {
+      if (prefill?.booking?.bulk_booking_id) {
+          setIsBulkEdit(true);
+          const fetchGroup = async () => {
+              const { data } = await supabase.from('bookings').select('*').eq('bulk_booking_id', prefill.booking.bulk_booking_id);
+              if (data) setBulkGroupBookings(data);
+          };
+          fetchGroup();
+      } else {
+          setIsBulkEdit(false);
+          setBulkGroupBookings([]);
+      }
+  }, [prefill?.booking]);
 
   // Bulk booking state
   const [isBulkBooking, setIsBulkBooking] = useState(false);
@@ -491,11 +534,166 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     return error.message || "Unable to complete the operation.";
   };
 
+  const handleBulkGroupUpdate = async (state: "Active" | "Reserved" | "Ended") => {
+      setLoading(true);
+      try {
+          const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
+          
+          // Use form values for updates to ensure consistency
+          const basePayload: any = {
+             booked_by: staffName,
+          };
+
+          // Handle Student Numbers / Bulk Count for GROUP UPDATE
+          let studentNumbersPayload = null; // Default to null if not set
+          
+          // If we are in bulk count mode (which is force-true for bulk edits now)
+          if (isBulkCount && totalStudents) {
+             let uuid = prefill?.booking?.bulk_booking_id;
+             if (uuid) {
+                 studentNumbersPayload = `bulk booking - ${uuid} - ${totalStudents}`;
+             } else {
+                 studentNumbersPayload = studentNumbers;
+             }
+          } else if (isBulkCount && !totalStudents) {
+              // If cleared, maybe we want it null or empty?
+              studentNumbersPayload = null;
+          } else {
+              // Standard student numbers (unlikely to hit here if isBulkCount is forced true for groups)
+              studentNumbersPayload = studentNumbers;
+          }
+          
+          if (isBulkCount) {
+             basePayload.student_numbers = studentNumbersPayload;
+          } else if (studentNumbers) {
+             basePayload.student_numbers = studentNumbers;
+          }
+
+          if (selectedCourseId && selectedCourseId !== "other") {
+             basePayload.course_id = parseInt(selectedCourseId, 10);
+             basePayload.course_name = null;
+          } else if (selectedCourseId === "other") {
+             basePayload.course_id = null;
+             basePayload.course_name = otherCourseName || null;
+          } else {
+             basePayload.course_id = null;
+             basePayload.course_name = null;
+          }
+
+          if (extensionMins > 0) {
+              const start = parseISO(`${startDate}T${startClock}`);
+              const originalDuration = parseInt(duration, 10);
+              const end = addMinutes(start, originalDuration);
+              const extendedEnd = addMinutes(end, extensionMins);
+              
+              const newClumpId = crypto.randomUUID();
+              
+              // 1. End currently active ones
+              // We update ALL in group to Ended.
+              const { error: updateError } = await supabase.from("bookings")
+                  .update({ 
+                      state: 'Ended', 
+                      end_time: format(end, "HH:mm:ss") // Ensure they end at the proper time
+                  })
+                  .eq("bulk_booking_id", prefill.booking.bulk_booking_id);
+                  
+              if (updateError) throw updateError;
+              
+              // 2. Insert New Bookings for Extension
+              // We base them on the rooms in the current group
+              const newBookings = bulkGroupBookings.map(b => {
+                  // If we updated the student count (basePayload has it), use it.
+                  // Otherwise copy from previous (b.student_numbers).
+                  // But wait, basePayload MIGHT have the OLD UUID in the string if we just constructed it above.
+                  // "bulk booking - [OLD_UUID] - count".
+                  // We need to update it to NEW UUID.
+                  
+                  let nextStudentNumbers = b.student_numbers;
+                  if (basePayload.student_numbers && basePayload.student_numbers.startsWith("bulk booking -")) {
+                       // Replace old UUID with newClumpId
+                       const parts = basePayload.student_numbers.split(' - ');
+                       if (parts.length === 3) {
+                           nextStudentNumbers = `bulk booking - ${newClumpId} - ${parts[2]}`;
+                       }
+                  } else if (b.student_numbers && b.student_numbers.startsWith("bulk booking -")) {
+                       // Even if we didn't change count, we must update UUID in the string
+                       const parts = b.student_numbers.split(' - ');
+                       if (parts.length === 3) {
+                           nextStudentNumbers = `bulk booking - ${newClumpId} - ${parts[2]}`;
+                       }
+                  }
+
+                  return {
+                    ...basePayload,
+                    room_id: b.room_id,
+                    booking_day: b.booking_day, // Assume extending on same day
+                    start_time: format(end, "HH:mm:ss"),
+                    end_time: format(extendedEnd, "HH:mm:ss"),
+                    state: 'Active',
+                    student_numbers: nextStudentNumbers, 
+                    borrowed_items: b.borrowed_items, // Copy from previous
+                    bulk_booking_id: newClumpId
+                  };
+              });
+               
+             const { error: insertError } = await supabase.from("bookings").insert(newBookings);
+             if (insertError) throw insertError;
+             
+             showToast("Extended Group", `Extended ${newBookings.length} bookings`, "success");
+
+          } else {
+               // Status Update - Apply state and any metadata changes to ALL
+               const updatePayload = {
+                   ...basePayload,
+                   state
+               };
+               
+               const { error } = await supabase.from("bookings")
+                  .update(updatePayload)
+                  .eq("bulk_booking_id", prefill.booking.bulk_booking_id);
+               if (error) throw error;
+               showToast("Updated Group", `Updated ${bulkGroupBookings.length} bookings to ${state}`, "success");
+          }
+          
+          resetFormToDefaults();
+          onBookingUpdate?.();
+          onClose();
+
+      } catch (err: any) {
+           console.error(err);
+           showToast("Bulk Update Failed", mapDatabaseError(err), "error");
+      } finally {
+          setLoading(false);
+      }
+  };
+
   const handleSave = async (state: "Active" | "Reserved" | "Ended") => {
     if (isBulkBooking) {
       await handleBulkSave(state);
       return;
     }
+    
+    // Check if bulk edit and ask user
+    let updateScope = 'single';
+    if (isBulkEdit) {
+        const result = await confirm({
+            title: "Update Bulk Group",
+            description: `This booking is part of a bulk group (${bulkGroupBookings.length} bookings).`,
+            cancelText: "Cancel",
+            actions: [
+                { label: "Update This Only", value: 'single', variant: 'outlined' },
+                { label: "Update Entire Group", value: 'group', variant: 'contained' }
+            ]
+        });
+        if (!result) return;
+        updateScope = result;
+    }
+    
+    if (updateScope === 'group') {
+        await handleBulkGroupUpdate(state);
+        return;
+    }
+    
     const newErrors: Record<string, boolean> = {};
     if (!roomId) newErrors.roomId = true;
     if (!startDate) newErrors.startDate = true;
@@ -844,6 +1042,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                     const tStart = timeRange.start;
                     const tEnd = timeRange.end;
                     if (!tStart || !tEnd || tStart >= tEnd) continue;
+                    
+                    const clumpId = crypto.randomUUID();
+                    // We don't set student numbers during Bulk Creation anymore
+                    // const finalStudentNumbers = totalStudents ? `bulk booking - ${clumpId} - ${totalStudents}` : null;
+
                     for (const rId of bulkRoomIds) {
                         const payload: any = {
                             room_id: parseInt(rId, 10),
@@ -854,6 +1057,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                             borrowed_items: [],
                             booked_by: staffName,
                             state: state,
+                            bulk_booking_id: clumpId,
                         };
                         if (selectedCourseId && selectedCourseId !== "other") {
                             payload.course_id = parseInt(selectedCourseId, 10);
@@ -914,17 +1118,40 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
   const handleDelete = async () => {
     if (!prefill?.booking?.id) return;
-    const ok = await confirm({
-      title: "Delete Booking",
-      description: "Delete this booking?",
-      confirmText: "Delete",
-      cancelText: "Cancel",
-    });
-    if (!ok) return;
+    const isGroup = isBulkEdit && prefill.booking.bulk_booking_id;
+    
+    let scope = 'single';
+    if (isGroup) {
+         const result = await confirm({
+             title: "Delete Booking",
+             description: `This booking is part of a bulk group (${bulkGroupBookings.length} bookings).`,
+             cancelText: "Cancel",
+             actions: [
+                 { label: "Delete This Only", value: 'single', variant: 'outlined', color: 'error' },
+                 { label: "Delete Entire Group", value: 'group', variant: 'contained', color: 'error' }
+             ]
+         });
+         if (!result) return;
+         scope = result;
+    } else {
+        const ok = await confirm({
+            title: "Delete Booking",
+            description: "Delete this booking?",
+            confirmText: "Delete",
+            cancelText: "Cancel",
+        });
+        if (!ok) return;
+    }
+
     setLoading(true);
     try {
-      const { error } = await supabase.from('bookings').delete().eq('id', prefill.booking.id);
-      if (error) throw error;
+      if (scope === 'group') {
+          const { error } = await supabase.from('bookings').delete().eq('bulk_booking_id', prefill.booking.bulk_booking_id);
+          if (error) throw error;
+      } else {
+          const { error } = await supabase.from('bookings').delete().eq('id', prefill.booking.id);
+          if (error) throw error;
+      }
       showToast("Deleted", "Booking deleted", "info");
       onBookingUpdate?.();
       onClose();
@@ -1038,7 +1265,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Box>
-                {prefill?.booking ? "Edit Booking" : "New Booking"}
+                {isBulkEdit 
+                    ? `Edit Bulk Group (${bulkGroupBookings.length} rooms)` 
+                    : (prefill?.booking ? "Edit Booking" : "New Booking")
+                }
                 {studentNumbers && ` - ${studentNumbers.split('\n').filter(l => l.trim()).length} students`}
             </Box>
             {!prefill?.booking && (
@@ -1088,6 +1318,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                             <Grid item xs={12}>
                                 <TextField fullWidth label="Staff Name" value={staffName} onChange={e => setStaffName(e.target.value)} error={!!errors.staffName} />
                             </Grid>
+                            
                         </>
                     ) : (
                         <>
@@ -1164,7 +1395,18 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                     {!isBulkBooking && (
                         <>
                              <Grid item xs={12}>
-                                <TextField multiline rows={3} fullWidth label="Student Numbers" value={studentNumbers} onChange={e => setStudentNumbers(e.target.value)} />
+                                {isBulkCount ? (
+                                    <TextField 
+                                        type="number" 
+                                        fullWidth 
+                                        label="Total Students (Entire Bulk Group)" 
+                                        value={totalStudents} 
+                                        onChange={e => setTotalStudents(e.target.value)} 
+                                        helperText="This count is shared across the bulk group"
+                                    />
+                                ) : (
+                                    <TextField multiline rows={3} fullWidth label="Student Numbers" value={studentNumbers} onChange={e => setStudentNumbers(e.target.value)} />
+                                )}
                             </Grid>
                             <Grid item xs={12}>
                                 <Typography variant="subtitle2">Borrowed Items</Typography>

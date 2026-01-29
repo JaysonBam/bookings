@@ -28,6 +28,7 @@ interface Booking {
   course?: { id: number; name: string; color_hex?: string } | null;
   state?: 'Active' | 'Reserved' | 'Ended' | undefined;
   booking_day?: string;
+  bulk_booking_id?: string | null;
 }
 
 interface BookingGridProps {
@@ -138,6 +139,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
               course: b.courses ?? null,
               state: b.state,
               booking_day: b.booking_day,
+              bulk_booking_id: b.bulk_booking_id,
             } as Booking;
           });
           setBookings(mapped);
