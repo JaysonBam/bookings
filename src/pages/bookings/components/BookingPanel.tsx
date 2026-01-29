@@ -1108,6 +1108,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                                 <MenuItem key={r.id} value={String(r.id)}>
                                                     <Box display="flex" justifyContent="space-between" width="100%">
                                                         <Typography color={status?.color || 'inherit'}>{r.name} {status?.text && `(${status.text})`}</Typography>
+                                                        {r.dynamic_labels && r.dynamic_labels.length > 0 && (
+                                                            <Typography sx={{ ml: 1 }}>
+                                                                {r.dynamic_labels.map((l: any) => l.split(' ').pop()).join(' ')}
+                                                            </Typography>
+                                                        )}
                                                     </Box>
                                                 </MenuItem>
                                             );
