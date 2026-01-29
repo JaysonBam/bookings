@@ -1045,7 +1045,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                 <FormControlLabel control={<Switch checked={isBulkBooking} onChange={(e) => setIsBulkBooking(e.target.checked)} />} label="Bulk Mode" />
             )}
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ overflowX: 'hidden' }}>
             {loading ? (
                 <Box display="flex" justifyContent="center" p={4}><CircularProgress /></Box>
             ) : (
