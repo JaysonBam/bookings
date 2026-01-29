@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Button, TextField, Box } from '@mui/material';
 import { Add as AddIcon, Search as SearchIcon } from '@mui/icons-material';
+import { DateInput } from "../../../components/DateInput";
 
 interface TopToolbarProps {
   selectedDate: Date;
@@ -21,13 +22,10 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ selectedDate, onDateChan
 
   const handleToday = () => onDateChange(new Date());
 
-  const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-      // valueAsDate returns a Date object in UTC, but input type="date" works with local date string YYYY-MM-DD.
-      // We need to be careful with timezone shifts if using valueAsDate directly if logic expects local midnight.
-      // But typically valueAsDate is fine for "Set to this date".
-      // Actually, safest is to parse the YYYY-MM-DD string as local time.
-      if (event.target.value) {
-          const [y, m, d] = event.target.value.split('-').map(Number);
+  const handleDateChange = (val: string) => {
+      // Input is yyyy-MM-dd
+      if (val) {
+          const [y, m, d] = val.split('-').map(Number);
           onDateChange(new Date(y, m - 1, d));
       }
   };
@@ -41,9 +39,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ selectedDate, onDateChan
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            {/* Date Picker using native input styled as textfield */}
-            <TextField
-                type="date"
+            <DateInput
                 size="small"
                 value={format(selectedDate, 'yyyy-MM-dd')}
                 onChange={handleDateChange}

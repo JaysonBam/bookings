@@ -12,6 +12,7 @@ import { format, parseISO, addMinutes, eachDayOfInterval, isBefore, differenceIn
 import timeLib from "../../../lib/time";
 import { useConfirm } from "../context/ConfirmDialogContext";
 import { useNow } from "../context/NowContext";
+import { DateInput } from "../../../components/DateInput";
 
 interface BookingPanelProps {
   open: boolean;
@@ -1055,9 +1056,9 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                 <Typography variant="subtitle2">Date Ranges</Typography>
                                 {bulkDates.map((d, i) => (
                                     <Box key={i} display="flex" gap={1} mb={1} alignItems="center">
-                                        <TextField type="date" size="small" value={d.start} onChange={e => updateBulkDate(i, 'start', e.target.value)} error={!!errors.bulkDates && !d.start} />
+                                        <DateInput size="small" value={d.start} onChange={val => updateBulkDate(i, 'start', val)} error={!!errors.bulkDates && !d.start} />
                                         <Typography>to</Typography>
-                                        <TextField type="date" size="small" value={d.end} onChange={e => updateBulkDate(i, 'end', e.target.value)} error={!!errors.bulkDates && !d.end} />
+                                        <DateInput size="small" value={d.end} onChange={val => updateBulkDate(i, 'end', val)} error={!!errors.bulkDates && !d.end} />
                                         <IconButton onClick={() => removeBulkDate(i)}><CloseIcon /></IconButton>
                                     </Box>
                                 ))}
@@ -1126,7 +1127,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                 </Box>
                             </Grid>
                             <Grid item xs={6}>
-                                <TextField type="date" fullWidth label="Date" value={startDate} onChange={e => setStartDate(e.target.value)} error={!!errors.startDate} InputLabelProps={{ shrink: true }} />
+                                <DateInput fullWidth label="Date" value={startDate} onChange={val => setStartDate(val)} error={!!errors.startDate} InputLabelProps={{ shrink: true }} />
                             </Grid>
                             <Grid item xs={6}>
                                 <TextField type="time" fullWidth label="Start Time" value={startClock} onChange={e => setStartClock(e.target.value)} error={!!errors.startClock} InputLabelProps={{ shrink: true }} inputProps={{ step: 1800 }} />
