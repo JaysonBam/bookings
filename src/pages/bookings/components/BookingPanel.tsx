@@ -667,6 +667,56 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       }
   };
 
+  const analyzeChanges = () => {
+    if (!prefill?.booking) return { isSharedChange: false, isIndividualChange: false, isExtension: false };
+
+    // Compare Current State vs Details
+    const currentStartClock = startClock;
+    const currentDuration = duration;
+    const originalStart = prefill.booking.start_time.slice(0, 5);
+    // calculate original duration 
+    const s = parseISO(`${prefill.booking.booking_day}T${prefill.booking.start_time}`);
+    const e = parseISO(`${prefill.booking.booking_day}T${prefill.booking.end_time}`);
+    const originalDur = Math.round((e.getTime() - s.getTime())/60000);
+    
+    // 1. Time Changes (Start Time, Duration) -> Shared
+    const isTimeChanged = (currentStartClock !== originalStart) || (parseInt(currentDuration) !== originalDur);
+    
+    // 2. Course Changes -> Shared
+    const originalCourseId = prefill.booking.course_id ? String(prefill.booking.course_id) : "";
+    const originalCourseName = prefill.booking.course_name ? prefill.booking.course_name : "";
+    
+    let isCourseChanged = false;
+    if (selectedCourseId !== "other") {
+        isCourseChanged = selectedCourseId !== originalCourseId;
+    } else {
+        isCourseChanged = otherCourseName !== originalCourseName;
+    }
+
+    // 3. Student Count Changes -> Shared (if bulk)
+    let isCountChanged = false;
+    if (isBulkCount) {
+        // extract original
+        const raw = prefill.booking.student_numbers || "";
+        const match = raw.match(/^bulk booking - [0-9a-fA-F-]+ - (\d+)$/);
+        const originalCount = match ? match[1] : "";
+        isCountChanged = totalStudents !== originalCount;
+    }
+
+    const isSharedChange = isTimeChanged || isCourseChanged || isCountChanged;
+
+    // 4. Room Change -> Individual
+    const isRoomChanged = prefill.booking.room_id !== parseInt(roomId, 10);
+    
+    // 5. Extension
+    const isExtension = !!selectedExtension;
+
+    // 6. Borrowed/Staff -> Neutral/Either
+    // Not strictly enforcing logic on these, but they don't block either path on their own.
+
+    return { isSharedChange, isIndividualChange: isRoomChanged, isExtension };
+  };
+
   const handleSave = async (state: "Active" | "Reserved" | "Ended") => {
     if (isBulkBooking) {
       await handleBulkSave(state);
@@ -676,20 +726,54 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     // Check if bulk edit and ask user
     let updateScope = 'single';
     if (isBulkEdit) {
+        const { isSharedChange, isIndividualChange, isExtension } = analyzeChanges();
+
+        if (isSharedChange && isIndividualChange) {
+            showToast("Conflict", "Cannot change Room (Individual) and Time/Course/Count (Group) at the same time.", "error");
+            return;
+        }
+
+        const actions: any[] = [];
+        
+        // Rules:
+        // - Individual Change (Room) -> Only Single
+        // - Shared Change (Time, Course, Count) -> Only Group
+        // - Extension -> Allow Single (Split) or Group? User said "single booking can be extended".
+        // - No critical change (just staff/borrowed) -> Both
+        
+        if (isIndividualChange) {
+            actions.push({ label: "Update This Only", value: 'single', variant: 'contained' });
+        } else if (isSharedChange) {
+             actions.push({ label: "Update Entire Group", value: 'group', variant: 'contained' });
+        } else if (isExtension) {
+             // Extension allows both
+             actions.push({ label: "Extend This Only", value: 'single', variant: 'outlined' });
+             actions.push({ label: "Extend Entire Group", value: 'group', variant: 'contained' });
+        } else {
+             // Neutral changes
+             actions.push({ label: "Update This Only", value: 'single', variant: 'outlined' });
+             actions.push({ label: "Update Entire Group", value: 'group', variant: 'contained' });
+        }
+
         const result = await confirm({
-            title: "Update Bulk Group",
-            description: `This booking is part of a bulk group (${bulkGroupBookings.length} bookings).`,
+            title: isExtension ? "Extend Bulk Group" : "Update Bulk Group",
+            description: isSharedChange 
+                ? "Changes to Time, Course, or Student Count must apply to the entire group."
+                : (isIndividualChange ? "Room changes can only represent this individual booking." : `This booking is part of a bulk group (${bulkGroupBookings.length} bookings).`),
             cancelText: "Cancel",
-            actions: [
-                { label: "Update This Only", value: 'single', variant: 'outlined' },
-                { label: "Update Entire Group", value: 'group', variant: 'contained' }
-            ]
+            actions: actions
         });
         if (!result) return;
         updateScope = result;
     }
     
     if (updateScope === 'group') {
+        const { isIndividualChange } = analyzeChanges();
+        if (isIndividualChange) {
+             // Should be caught above, but safety check
+             showToast("Error", "Cannot apply room change to entire group.", "error");
+             return;
+        }
         await handleBulkGroupUpdate(state);
         return;
     }
