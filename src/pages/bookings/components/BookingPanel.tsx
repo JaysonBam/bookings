@@ -535,6 +535,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   };
 
   const handleBulkGroupUpdate = async (state: "Active" | "Reserved" | "Ended") => {
+      if (!prefill?.booking?.bulk_booking_id) return;
       setLoading(true);
       try {
           const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
