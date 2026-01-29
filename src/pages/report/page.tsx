@@ -99,26 +99,61 @@ export default function ReportPage() {
       };
 
       // 2. Process Data for Report 1: Raw Booking Data
-      const rawData = bookings?.map((booking) => {
-        const roomName = roomMap.get(booking.room_id) || `Room ${booking.room_id}`;
+      // Group bookings by bulk_booking_id + date + time
+      const groupedBookings = new Map<string, any[]>();
+      
+      bookings?.forEach((booking) => {
+        // Create a unique key for grouping: bulk_booking_id + date + start_time
+        // This merges multi-room bookings for the same time slot, but keeps separate dates distinct
+        const key = booking.bulk_booking_id 
+          ? `${booking.bulk_booking_id}_${booking.booking_day}_${booking.start_time}`
+          : booking.id;
+          
+        if (!groupedBookings.has(key)) {
+          groupedBookings.set(key, []);
+        }
+        groupedBookings.get(key)?.push(booking);
+      });
+
+      const rawData = Array.from(groupedBookings.values()).map((group) => {
+        const mainBooking = group[0];
+        // Combine room names
+        const roomNames = group
+          .map((b: any) => roomMap.get(b.room_id) || `Room ${b.room_id}`)
+          .sort()
+          .join(", ");
+          
         const courseName =
-          booking.course_name ||
-          (booking.course_id ? courseMap.get(booking.course_id) : "N/A") ||
+          mainBooking.course_name ||
+          (mainBooking.course_id ? courseMap.get(mainBooking.course_id) : "N/A") ||
           "N/A";
-        const duration = calculateDuration(booking.start_time, booking.end_time);
-        const studentCount = booking.student_numbers
-          ? booking.student_numbers.split("\n").filter((l: string) => l.trim()).length
-          : 0;
+          
+        const duration = calculateDuration(mainBooking.start_time, mainBooking.end_time);
+        
+        // Calculate student count
+        // Check for special bulk format in student_numbers: "bulk booking - [UUID] - [count]"
+        let studentCount = 0;
+        const bulkMatch = mainBooking.student_numbers?.match(/^bulk booking - [0-9a-fA-F-]+ - (\d+)$/);
+        
+        if (bulkMatch && mainBooking.bulk_booking_id) {
+           studentCount = parseInt(bulkMatch[1], 10);
+        } else {
+           const sn = mainBooking.student_numbers || "";
+           // Only count lines if it is NOT a bulk string format we missed
+           if (!sn.startsWith("bulk booking -")) {
+               studentCount = sn.split("\n").filter((l: string) => l.trim()).length;
+           }
+        }
 
         return {
-          Date: booking.booking_day,
-          Room: roomName,
+          Date: mainBooking.booking_day,
+          Room: roomNames,
           Course: courseName,
-          "Start Time": booking.start_time,
-          "End Time": booking.end_time,
+          "Start Time": mainBooking.start_time,
+          "End Time": mainBooking.end_time,
           "Duration (Hours)": duration.toFixed(2),
-          "Booked By": booking.booked_by,
-          "Student Numbers": booking.student_numbers,
+          "Booked By": mainBooking.booked_by,
+          "Student Numbers": mainBooking.bulk_booking_id ? "" : mainBooking.student_numbers,
           "Student Count": studentCount,
         };
       });
