@@ -15,6 +15,7 @@ CREATE TABLE public.bookings (
   student_numbers TEXT,
   borrowed_items TEXT[] DEFAULT '{}',
   booked_by TEXT NOT NULL,
+  bulk_booking_id TEXT,
   state TEXT NOT NULL CHECK (state IN ('Active', 'Reserved', 'Ended')) DEFAULT 'Reserved',
 
   CONSTRAINT bookings_time_order CHECK (
