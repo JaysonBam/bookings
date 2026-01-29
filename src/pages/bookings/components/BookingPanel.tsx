@@ -1353,7 +1353,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                     ? `Edit Bulk Group (${bulkGroupBookings.length} rooms)` 
                     : (prefill?.booking ? "Edit Booking" : "New Booking")
                 }
-                {studentNumbers && ` - ${studentNumbers.split('\n').filter(l => l.trim()).length} students`}
+                {isBulkCount 
+                    ? (totalStudents && ` - ${totalStudents} students`) 
+                    : (studentNumbers && ` - ${studentNumbers.split('\n').filter(l => l.trim()).length} students`)
+                }
             </Box>
             {!prefill?.booking && (
                 <FormControlLabel control={<Switch checked={isBulkBooking} onChange={(e) => setIsBulkBooking(e.target.checked)} />} label="Bulk Mode" />
