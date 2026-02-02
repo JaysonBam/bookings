@@ -30,6 +30,7 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import CircleIcon from '@mui/icons-material/Circle';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import SearchIcon from '@mui/icons-material/Search';
+import YouTubeIcon from '@mui/icons-material/YouTube';
 
 import { useLayout } from '../../components/LayoutContext';
 
@@ -76,14 +77,27 @@ export default function DocumentPage() {
                     {/* BOOKINGS SECTION */}
                     <Paper elevation={0} variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
                         <Box sx={{ p: { xs: 2, md: 3 }, borderBottom: 1, borderColor: 'divider', bgcolor: theme.palette.mode === 'dark' ? 'action.hover' : 'grey.50' }}>
-                            <Box display="flex" alignItems="center" gap={2}>
-                                <Avatar sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}>
-                                    <DateRangeIcon />
-                                </Avatar>
-                                <Box>
-                                    <Typography variant="h5" fontWeight="bold" color="text.primary" sx={{ fontSize: { xs: '1.1rem', md: '1.5rem' } }}>Bookings & Dashboard</Typography>
-                                    <Typography variant="body2" color="text.secondary">Everything you need to know about managing room bookings.</Typography>
+                            <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
+                                <Box display="flex" alignItems="center" gap={2}>
+                                    <Avatar sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+                                        <DateRangeIcon />
+                                    </Avatar>
+                                    <Box>
+                                        <Typography variant="h5" fontWeight="bold" color="text.primary" sx={{ fontSize: { xs: '1.1rem', md: '1.5rem' } }}>Bookings & Dashboard</Typography>
+                                        <Typography variant="body2" color="text.secondary">Everything you need to know about managing room bookings.</Typography>
+                                    </Box>
                                 </Box>
+                                <Button
+                                    variant="outlined"
+                                    color="error"
+                                    startIcon={<YouTubeIcon />}
+                                    href="https://youtu.be/Zh3WArMZbLo"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 'bold' }}
+                                >
+                                    Watch Video Guide
+                                </Button>
                             </Box>
                         </Box>
                         
@@ -238,10 +252,11 @@ export default function DocumentPage() {
                                         <Paper variant="outlined" sx={{ p: 3, mt: 2, bgcolor: 'background.paper' }}>
                                             <Typography variant="subtitle2" gutterBottom>Smart Select Logic Flow (in order):</Typography>
                                             <Box component="ol" sx={{ pl: 2, m: 0, '& li': { mb: 1, fontSize: '0.875rem' } }}>
-                                                <li><strong>Filter Availability:</strong> Removes any rooms that are currently occupied.</li>
-                                                <li><strong>Maximize Time:</strong> Prioritizes rooms that are free for the longest time (allows for extensions).</li>
-                                                <li><strong>Overdue Status:</strong> Can prioritize swapping into rooms that need checking.</li>
-                                                <li><strong>Best Fit:</strong> Selects rooms that best match the group size (avoids putting 1 person in a 10-person room).</li>
+                                                <li><strong>Filter Availability:</strong> Removes rooms that are occupied (unless "Late") or too small.</li>
+                                                <li><strong>Best Fit:</strong> Prioritizes rooms where the group size fits the minimum recommendation efficiently.</li>
+                                                <li><strong>Clean vs Late:</strong> Prefers empty rooms over rooms that are technically reserved but "Late".</li>
+                                                <li><strong>Maximize Time:</strong> Prioritizes rooms that are free for the longest duration.</li>
+                                                <li><strong>Overdue Status:</strong> Prioritizes rooms with overdue bookings (to help clear them).</li>
                                                 <li><strong>Maintenance Check:</strong> Avoids rooms with reported issues (lights, plugs etc).</li>
                                                 <li><strong>Alphabetical:</strong> Final tie-breaker.</li>
                                             </Box>
@@ -303,9 +318,21 @@ export default function DocumentPage() {
                                             <Typography variant="subtitle1" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 <ContentCopyIcon fontSize="small" /> Bulk Bookings
                                             </Typography>
-                                            <Typography variant="body2">
-                                                Use the Bulk Booking tab to reserve multiple slots across different days or times in one go. Great for mass bookings.
+                                            <Typography variant="body2" paragraph>
+                                                Use the Bulk Booking tab to reserve multiple slots across different days or times in one go.
                                             </Typography>
+                                            <Typography variant="subtitle2" gutterBottom>Key Concepts:</Typography>
+                                            <Box component="ul" sx={{ pl: 2, m: 0, '& li': { mb: 1, fontSize: '0.875rem' } }}>
+                                                <li>
+                                                    <strong>Headcounts:</strong> Instead of listing individual student numbers, you provide a <strong>Total Headcount</strong>. This count applies to the entire "Bulk Group", not per room.
+                                                </li>
+                                                <li>
+                                                    <strong>Bulk Groups:</strong> A group is defined by a unique <strong>Day + Time Slot</strong> combination. Even if you create multiple bookings at once, if they are for different times or days, they are treated as separate groups.
+                                                </li>
+                                                <li>
+                                                    <strong>Mass Actions:</strong> You can perform certain actions (like <strong>Start</strong> or <strong>End</strong>) on an entire bulk group at once, streamlining management for large classes.
+                                                </li>
+                                            </Box>
                                         </Paper>
                                     </Stack>
                                 </Box>
