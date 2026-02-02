@@ -30,6 +30,7 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import CircleIcon from '@mui/icons-material/Circle';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import SearchIcon from '@mui/icons-material/Search';
+import YouTubeIcon from '@mui/icons-material/YouTube';
 
 import { useLayout } from '../../components/LayoutContext';
 
@@ -76,14 +77,27 @@ export default function DocumentPage() {
                     {/* BOOKINGS SECTION */}
                     <Paper elevation={0} variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
                         <Box sx={{ p: { xs: 2, md: 3 }, borderBottom: 1, borderColor: 'divider', bgcolor: theme.palette.mode === 'dark' ? 'action.hover' : 'grey.50' }}>
-                            <Box display="flex" alignItems="center" gap={2}>
-                                <Avatar sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}>
-                                    <DateRangeIcon />
-                                </Avatar>
-                                <Box>
-                                    <Typography variant="h5" fontWeight="bold" color="text.primary" sx={{ fontSize: { xs: '1.1rem', md: '1.5rem' } }}>Bookings & Dashboard</Typography>
-                                    <Typography variant="body2" color="text.secondary">Everything you need to know about managing room bookings.</Typography>
+                            <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
+                                <Box display="flex" alignItems="center" gap={2}>
+                                    <Avatar sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+                                        <DateRangeIcon />
+                                    </Avatar>
+                                    <Box>
+                                        <Typography variant="h5" fontWeight="bold" color="text.primary" sx={{ fontSize: { xs: '1.1rem', md: '1.5rem' } }}>Bookings & Dashboard</Typography>
+                                        <Typography variant="body2" color="text.secondary">Everything you need to know about managing room bookings.</Typography>
+                                    </Box>
                                 </Box>
+                                <Button
+                                    variant="outlined"
+                                    color="error"
+                                    startIcon={<YouTubeIcon />}
+                                    href="https://youtu.be/Zh3WArMZbLo"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 'bold' }}
+                                >
+                                    Watch Video Guide
+                                </Button>
                             </Box>
                         </Box>
                         
