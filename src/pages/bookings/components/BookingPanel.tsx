@@ -220,7 +220,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       return h * 60 + m;
     };
     const startMins = parseTime(startClock);
-    let limitMins = 24 * 60;
+    
+    // Initial limit is the closing time
+    const [closeH, closeM] = openingHours.end.split(':').map(Number);
+    let limitMins = closeH * 60 + closeM;
     
     const isLate = (b: any) => {
         if (b.state !== 'Reserved') return false;
@@ -261,7 +264,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         }
     }
     return options;
-  }, [startClock, dayBookings, prefill?.booking, duration, roomId, currentTime, startDate]);
+  }, [startClock, dayBookings, prefill?.booking, duration, roomId, currentTime, startDate, openingHours]);
 
   const availableExtensionOptions = useMemo(() => {
     if (!prefill?.booking) return [];
@@ -273,7 +276,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const currentDuration = parseInt(duration, 10);
     if (isNaN(currentDuration)) return [];
     const endMins = startMins + currentDuration;
-    let limitMins = 24 * 60;
+    
+    // Initial limit is the closing time
+    const [closeH, closeM] = openingHours.end.split(':').map(Number);
+    let limitMins = closeH * 60 + closeM;
+
     for (const b of dayBookings) {
       if (String(b.room_id) !== String(roomId)) continue;
       if (prefill?.booking && String(b.id) === String(prefill.booking.id)) continue;
@@ -284,7 +291,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const options: number[] = [];
     for (let d = 30; d <= maxExtension && d <= 120; d += 30) options.push(d);
     return options;
-  }, [startClock, duration, dayBookings, prefill?.booking, roomId]);
+  }, [startClock, duration, dayBookings, prefill?.booking, roomId, openingHours]);
 
   useEffect(() => {
     const currentDur = parseInt(duration);
