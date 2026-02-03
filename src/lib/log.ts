@@ -18,6 +18,8 @@ export const logEvent = async (
   eventType: 'booking_create' | 'state_change', 
   detail: BookingCreateDetail | StateChangeDetail
 ) => {
+  if (import.meta.env.VITE_LOGGING_ENABLED !== 'true') return;
+
   try {
     const { error } = await supabase.from('logs').insert({
       event_type: eventType,
