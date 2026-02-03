@@ -48,7 +48,6 @@ export default function LoginPage() {
         }
 
         // Handle profile updates based on status
-        console.log('User metadata:', user.user_metadata)
         const updates = {
             full_name: user.user_metadata.full_name || user.user_metadata.name,
             profile_url: user.user_metadata.avatar_url || user.user_metadata.picture,
@@ -127,6 +126,7 @@ export default function LoginPage() {
                 } catch (err) {
                   // eslint-disable-next-line no-console
                   console.error('Google sign-in error', err)
+                  setErrorMsg('Failed to initiate Google sign-in')
                   setLoading(false)
                 }
               }}

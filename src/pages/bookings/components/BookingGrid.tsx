@@ -41,6 +41,7 @@ interface BookingGridProps {
   onQuickAction?: (bookingId: string, action: 'activate' | 'end') => void;
   highlightedBookingId?: string | null;
   refreshTrigger?: number;
+  showToast?: (title: string, description: string, severity?: "success" | "error" | "info") => void;
 }
 
 const defaultRooms: Room[] = [
@@ -59,6 +60,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
   onQuickAction,
   highlightedBookingId,
   refreshTrigger = 0,
+  showToast = () => {},
 }) => {
   const [rooms, setRooms] = useState<Room[]>(roomsProp ?? defaultRooms);
   const [openingHours, setOpeningHours] = useState<{ start: string; end: string }>(openingHoursProp ?? { start: "06:00", end: "21:00" });
@@ -78,7 +80,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
       try {
         const { data: roomsData, error: roomsErr } = await supabase.from("rooms").select("*");
         if (roomsErr) {
-          console.error("Error loading rooms:", roomsErr);
+          showToast("Error", "Failed to load rooms", "error");
         } else if (roomsData) {
           const fetched = (roomsData as any[])
             .filter((r) => r.is_available === false ? false : true)
@@ -103,7 +105,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
           setOpeningHours({ start, end });
         }
       } catch (err) {
-        console.error("BookingGrid load error", err);
+        showToast("Error", "Failed to load grid configuration", "error");
       } finally {
         
       }
@@ -123,7 +125,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
           .from("bookings")
           .select(`*, courses(id, name, color_hex)`)
           .eq("booking_day", dateStr);
-        if (bookingsErr) { console.error("Error loading bookings:", bookingsErr); setLoading(false); return; }
+        if (bookingsErr) { showToast("Error", "Failed to load bookings", "error"); setLoading(false); return; }
         if (bookingsData) {
           const mapped = (bookingsData as any[]).map((b) => {
             const startIso = `${b.booking_day}T${(b.start_time || "").slice(0,8)}`;
@@ -145,11 +147,11 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
           setBookings(mapped);
         }
         setLoading(false);
-      } catch (e) { 
-          console.error("Error fetching bookings", e); 
+      } catch (e) {
+          showToast("Error", "Failed to refresh bookings", "error");
           setLoading(false);
       }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     if (bookingsProp && bookingsProp.length > 0) {

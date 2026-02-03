@@ -10,6 +10,7 @@ interface SearchPanelProps {
   onClose: () => void;
   selectedDate: Date;
   onBookingSelect?: (bookingId: string) => void;
+  showToast?: (title: string, description: string, severity?: "success" | "error" | "info") => void;
 }
 
 interface Booking {
@@ -25,7 +26,7 @@ interface Booking {
   };
 }
 
-export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selectedDate, onBookingSelect }) => {
+export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selectedDate, onBookingSelect, showToast = () => {} }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,7 +58,8 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selec
       .eq("booking_day", dateStr);
 
     if (error) {
-      console.error("Error fetching bookings:", error);
+      console.error("Search error", error);
+      showToast("Error", "Failed to search bookings", "error");
     } else {
       setBookings(data as any);
     }

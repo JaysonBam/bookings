@@ -208,7 +208,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                 setDayBookings(bookingsData);
             }
         } catch(e) {
-            console.error("Background fetch failed", e);
+            console.error("Background load error", e);
+            showToast("Warning", "Could not load availability data", "info");
         }
     };
     loadBackground();
@@ -434,20 +435,9 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           };
       });
       
-      console.log("----- Smart Select Debug -----");
-      console.log("1. All Room Metrics (Initial):", JSON.parse(JSON.stringify(roomMetrics)));
-
-      const filteredBySize = roomMetrics.filter(m => (m.room.max_people || 0) >= groupSize);
-      console.log("2. Filtered by Size:", JSON.parse(JSON.stringify(filteredBySize)));
       // Note: My implementation filtered `validRooms` at the start of the function which is basically step 2.
-      // But for logging purposes I'll clarify what happened.
-      const droppedBySize = allRooms.filter(r => (r.max_people || 0) < groupSize).map(r => r.name);
-      if (droppedBySize.length > 0) console.log("   Dropped by Size Limit:", droppedBySize);
 
       const availableRooms = roomMetrics.filter(m => !m.isOccupied);
-      console.log("3. Filtered by Occupied (Available Candidates):", JSON.parse(JSON.stringify(availableRooms)));
-      const droppedByOccupied = roomMetrics.filter(m => m.isOccupied).map(m => m.name);
-      if (droppedByOccupied.length > 0) console.log("   Dropped by Occupied:", droppedByOccupied);
 
 
       // Sort
@@ -488,15 +478,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           return a.name.localeCompare(b.name);
       });
 
-      console.log("4. Final Sorted Ranking:", JSON.parse(JSON.stringify(availableRooms.map(m => ({ 
-          name: m.name, 
-          score: m.score, 
-          clean: !m.isLateAvailable, 
-          minsAvail: m.minutesAvailable, 
-          lateMins: m.currentLateMinutes 
-      })))));
-      console.log("------------------------------");
-
       return availableRooms.map(m => m.room);
   };
 
@@ -514,7 +495,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     try {
         targetDate = parseISO(`${startDate}T${startClock}`);
     } catch (e) {
-        console.error("Invalid date/time", e);
+        // invalid date
     }
 
     // Fetch bookings for the selected date
@@ -684,7 +665,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           onClose();
 
       } catch (err: any) {
-           console.error(err);
+           // silent
            showToast("Bulk Update Failed", mapDatabaseError(err), "error");
       } finally {
           setLoading(false);
@@ -950,15 +931,17 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
               }
          }
 
-         const { error: autoEndError } = await supabase
+         const { error: _autoEndError } = await supabase
             .from('bookings')
             .update({ state: 'Ended' })
             .eq('room_id', roomId)
             .eq('booking_day', startDate)
             .lt('start_time', startStr)
             .neq('state', 'Ended');
-            
-         if (autoEndError) console.error("Auto-end error:", autoEndError); 
+
+          if (_autoEndError) {
+             showToast("Error", "Failed to auto-end overlapping bookings", "error");
+          }
       }
 
       const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
@@ -1161,7 +1144,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       onBookingUpdate?.();
       onClose();
     } catch (err: any) {
-      console.error(err);
+      // silent
       showToast("Save failed", mapDatabaseError(err), "error");
     } finally {
       setLoading(false);

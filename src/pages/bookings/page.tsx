@@ -43,6 +43,7 @@ const BookingsContent = () => {
                 setSelectedDate(t);
             } catch (e) {
                 // ignore and keep system date
+                // Silent failure is acceptable here as it falls back to system time
             }
         })();
     }, []);
@@ -60,12 +61,21 @@ const BookingsContent = () => {
 
     useEffect(() => {
         const fetchData = async () => {
-            const [{ data: roomsData }, { data: coursesData }] = await Promise.all([
-                supabase.from("rooms").select("id,name,borrowable_items,is_available,dynamic_labels,max_people,min_people").order("name"),
-                supabase.from("courses").select("id,name").order("name"),
-            ]);
-            setRooms((roomsData || []).filter((r: any) => r.is_available !== false).map((r: any) => ({ ...r, id: String(r.id) })));
-            setCourses(coursesData || []);
+            try {
+                const [{ data: roomsData, error: roomsError }, { data: coursesData, error: coursesError }] = await Promise.all([
+                    supabase.from("rooms").select("id,name,borrowable_items,is_available,dynamic_labels,max_people,min_people").order("name"),
+                    supabase.from("courses").select("id,name").order("name"),
+                ]);
+                
+                if (roomsError) throw roomsError;
+                if (coursesError) throw coursesError;
+
+                setRooms((roomsData || []).filter((r: any) => r.is_available !== false).map((r: any) => ({ ...r, id: String(r.id) })));
+                setCourses(coursesData || []);
+            } catch (error) {
+                console.error("Failed to load initial data", error);
+                showToast("Error", "Failed to load rooms and courses. Please refresh.", "error");
+            }
         };
         fetchData();
     }, []);
@@ -83,11 +93,41 @@ const BookingsContent = () => {
     const handleBookClick = useCallback(async () => {
         // open panel with current time rounded to nearest 30 minutes (no room selected)
         const now = await timeLib.getTime();
+
+        // Fetch operational hours
+        const { data: settings } = await supabase
+            .from('settings')
+            .select('value')
+            .eq('key', 'operation_hours')
+            .maybeSingle();
+
+        let openTime = "06:00";
+        let closeTime = "21:00";
+
+        if (settings?.value) {
+            const val = settings.value as any;
+            openTime = val.start ?? val.open ?? "06:00";
+            closeTime = val.end ?? val.close ?? "21:00";
+        }
+
+        const [closeH, closeM] = closeTime.split(':').map(Number);
+        const [openH, openM] = openTime.split(':').map(Number);
+
         const mins = now.getMinutes();
         const rem = mins % 30;
         if (rem < 15) now.setMinutes(mins - rem);
         else now.setMinutes(mins + (30 - rem));
         now.setSeconds(0, 0);
+
+        const nowH = now.getHours();
+        const nowM = now.getMinutes();
+
+        // If after close or before open, set to open time
+        if ((nowH > closeH) || (nowH === closeH && nowM >= closeM) || (nowH < openH) || (nowH === openH && nowM < openM)) {
+            now.setHours(openH);
+            now.setMinutes(openM);
+        }
+
         setPanelData({ timeSlot: now.toISOString() });
         setCreationStartTime(Date.now());
         setPanelOpen(true);
@@ -106,6 +146,7 @@ const BookingsContent = () => {
                 const { data, error } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
                 if (error) {
                     console.error('Error fetching booking', error);
+                    showToast("Error", "Could not load full booking details", "error");
                     // still open panel with id only as fallback
                     setPanelData({ bookingId });
                 } else {
@@ -113,6 +154,7 @@ const BookingsContent = () => {
                 }
             } catch (e) {
                 console.error('Failed to load booking', e);
+                showToast("Error", "Failed to load booking details", "error");
                 setPanelData({ bookingId });
             } finally {
                 setPanelOpen(true);
@@ -314,6 +356,7 @@ const BookingsContent = () => {
                         onQuickAction={handleQuickAction}
                         highlightedBookingId={highlightedBookingId}
                         refreshTrigger={refreshGridTrigger}
+                        showToast={showToast}
                     />
                 </StyledGridContainer>
                 <SearchPanel 
@@ -321,6 +364,7 @@ const BookingsContent = () => {
                     onClose={() => setIsSearchOpen(false)} 
                     selectedDate={selectedDate}
                     onBookingSelect={handleBookingSelect}
+                    showToast={showToast}
                 />
             </StyledContentContainer>
 
