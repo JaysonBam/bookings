@@ -7,10 +7,11 @@ import { BookingPanel } from "./components/BookingPanel";
 import { SearchPanel } from "./components/SearchPanel";
 import { useConfirm, ConfirmDialogProvider } from "./context/ConfirmDialogContext";
 import { NowProvider } from "./context/NowContext";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, differenceInMinutes } from "date-fns";
 import { Snackbar, Alert } from "@mui/material";
 import { StyledPageContainer, StyledContentContainer, StyledGridContainer } from "./styles";
 import { useLayout } from "../../components/LayoutContext";
+import { logEvent } from "../../lib/log";
 
 const BookingsContent = () => {
     const { confirm } = useConfirm();
@@ -51,6 +52,7 @@ const BookingsContent = () => {
     const [highlightedBookingId, setHighlightedBookingId] = useState<string | null>(null);
     const [refreshGridTrigger, setRefreshGridTrigger] = useState(0);
     const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const [creationStartTime, setCreationStartTime] = useState<number | null>(null);
 
     // Static data caching
     const [rooms, setRooms] = useState<any[]>([]);
@@ -87,11 +89,13 @@ const BookingsContent = () => {
         else now.setMinutes(mins + (30 - rem));
         now.setSeconds(0, 0);
         setPanelData({ timeSlot: now.toISOString() });
+        setCreationStartTime(Date.now());
         setPanelOpen(true);
     }, []);
 
     const handleCellClick = (roomId: string, timeSlotIso: string) => {
         setPanelData({ roomId, timeSlot: timeSlotIso });
+        setCreationStartTime(Date.now());
         setPanelOpen(true);
     };
 
@@ -196,9 +200,32 @@ const BookingsContent = () => {
                                 .update({ state: newState, end_time: newEndTime })
                                 .eq('id', bookingId);
                             if (error) throw error;
+
+                            await logEvent('state_change', {
+                                type: 'quick',
+                                state: 'active_to_ended',
+                                time: differenceInMinutes(now, bookingEnd)
+                            });
+
                             showToast("Success", `Booking ended early at ${format(now, "HH:mm")}`, "success");
                             return;
                         }
+                    } else {
+                         // Past End Time
+                         const { error } = await supabase
+                            .from('bookings')
+                            .update({ state: newState })
+                            .eq('id', bookingId);
+                         if (error) throw error;
+                         
+                         await logEvent('state_change', {
+                             type: 'quick',
+                             state: 'active_to_ended',
+                             time: differenceInMinutes(now, bookingEnd)
+                         });
+                         
+                         showToast("Success", "Booking ended", "success");
+                         return;
                     }
                 } else {
                     // Group End
@@ -209,18 +236,37 @@ const BookingsContent = () => {
                         .update({ state: newState })
                         .eq('bulk_booking_id', booking.bulk_booking_id);
                     if (error) throw error;
+                    
+                    const now = await timeLib.getTime();
+                    const bEnd = parseISO(`${booking.booking_day}T${booking.end_time}`);
+                    await logEvent('state_change', {
+                        type: 'quick',
+                        state: 'active_to_ended',
+                        time: differenceInMinutes(now, bEnd)
+                    });
+
                     showToast("Success", `Group ended`, "success");
                     return;
                 }
             }
 
             // ACTIVATE Logic
+            const nowForLog = await timeLib.getTime();
+            const bStart = parseISO(`${booking.booking_day}T${booking.start_time}`);
+
             if (scope === 'group') {
                 const { error } = await supabase
                     .from('bookings')
                     .update({ state: newState })
                     .eq('bulk_booking_id', booking.bulk_booking_id);
                 if (error) throw error;
+                 
+                 await logEvent('state_change', {
+                    type: 'quick',
+                    state: 'reserved_to_active', 
+                    time: differenceInMinutes(nowForLog, bStart)
+                 });
+
                  showToast("Success", `Group ${newState.toLowerCase()}`, "success");
             } else {
                 const { error } = await supabase
@@ -228,6 +274,13 @@ const BookingsContent = () => {
                     .update({ state: newState })
                     .eq('id', bookingId);
                 if (error) throw error;
+
+                 await logEvent('state_change', {
+                    type: 'quick',
+                    state: 'reserved_to_active',
+                    time: differenceInMinutes(nowForLog, bStart)
+                 });
+
                  showToast("Success", `Booking ${newState.toLowerCase()}`, "success");
             }
         } catch (err: any) {
@@ -274,13 +327,14 @@ const BookingsContent = () => {
             <BookingPanel
                 key={panelOpen ? (panelData?.booking?.id ? `edit-${panelData.booking.id}` : `new-${panelData?.roomId || ''}-${panelData?.timeSlot || ''}`) : 'closed'}
                 open={panelOpen}
-                onClose={() => { setPanelOpen(false); setPanelData(null); }}
+                onClose={() => { setPanelOpen(false); setPanelData(null); setCreationStartTime(null); }}
                 prefill={panelData}
                 defaultStaffName={currentUser}
                 showToast={showToast}
                 onBookingUpdate={() => setRefreshGridTrigger(prev => prev + 1)}
                 rooms={rooms}
                 courses={courses}
+                creationStartTime={creationStartTime}
             />
              <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={handleSnackbarClose}>
                 <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
