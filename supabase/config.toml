@@ -59,7 +59,8 @@ schema_paths = [
     "./schemas/settings.sql",
     "./schemas/rooms.sql",
     "./schemas/courses.sql",
-    "./schemas/bookings.sql"
+    "./schemas/bookings.sql",
+    "./schemas/logs.sql"
 ]
 
 [db.seed]

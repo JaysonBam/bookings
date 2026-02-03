@@ -14,6 +14,8 @@ import { useConfirm } from "../context/ConfirmDialogContext";
 import { useNow } from "../context/NowContext";
 import { DateInput } from "../../../components/DateInput";
 
+import { logEvent } from "../../../lib/log";
+
 interface BookingPanelProps {
   open: boolean;
   onClose: () => void;
@@ -23,9 +25,10 @@ interface BookingPanelProps {
   onBookingUpdate?: () => void;
   rooms: any[];
   courses: any[];
+  creationStartTime?: number | null;
 }
 
-export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefill = null, defaultStaffName = "", showToast = () => {}, onBookingUpdate, rooms, courses }) => {
+export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefill = null, defaultStaffName = "", showToast = () => {}, onBookingUpdate, rooms, courses, creationStartTime }) => {
   const { confirm } = useConfirm();
   const { currentTime } = useNow();
 
@@ -70,6 +73,19 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const [staffName, setStaffName] = useState<string>(() => {
       return prefill?.booking?.booked_by || defaultStaffName || ""
   });
+  const [isNameManuallyTyped, setIsNameManuallyTyped] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+        setIsNameManuallyTyped(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!isNameManuallyTyped && !prefill?.booking) {
+        setStaffName(defaultStaffName || "");
+    }
+  }, [defaultStaffName, isNameManuallyTyped, prefill?.booking]);
 
   const [studentNumbers, setStudentNumbers] = useState<string>(() => prefill?.booking?.student_numbers || "");
 
@@ -192,7 +208,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                 setDayBookings(bookingsData);
             }
         } catch(e) {
-            console.error("Background fetch failed", e);
+            console.error("Background load error", e);
+            showToast("Warning", "Could not load availability data", "info");
         }
     };
     loadBackground();
@@ -418,20 +435,9 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           };
       });
       
-      console.log("----- Smart Select Debug -----");
-      console.log("1. All Room Metrics (Initial):", JSON.parse(JSON.stringify(roomMetrics)));
-
-      const filteredBySize = roomMetrics.filter(m => (m.room.max_people || 0) >= groupSize);
-      console.log("2. Filtered by Size:", JSON.parse(JSON.stringify(filteredBySize)));
       // Note: My implementation filtered `validRooms` at the start of the function which is basically step 2.
-      // But for logging purposes I'll clarify what happened.
-      const droppedBySize = allRooms.filter(r => (r.max_people || 0) < groupSize).map(r => r.name);
-      if (droppedBySize.length > 0) console.log("   Dropped by Size Limit:", droppedBySize);
 
       const availableRooms = roomMetrics.filter(m => !m.isOccupied);
-      console.log("3. Filtered by Occupied (Available Candidates):", JSON.parse(JSON.stringify(availableRooms)));
-      const droppedByOccupied = roomMetrics.filter(m => m.isOccupied).map(m => m.name);
-      if (droppedByOccupied.length > 0) console.log("   Dropped by Occupied:", droppedByOccupied);
 
 
       // Sort
@@ -472,15 +478,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           return a.name.localeCompare(b.name);
       });
 
-      console.log("4. Final Sorted Ranking:", JSON.parse(JSON.stringify(availableRooms.map(m => ({ 
-          name: m.name, 
-          score: m.score, 
-          clean: !m.isLateAvailable, 
-          minsAvail: m.minutesAvailable, 
-          lateMins: m.currentLateMinutes 
-      })))));
-      console.log("------------------------------");
-
       return availableRooms.map(m => m.room);
   };
 
@@ -498,7 +495,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     try {
         targetDate = parseISO(`${startDate}T${startClock}`);
     } catch (e) {
-        console.error("Invalid date/time", e);
+        // invalid date
     }
 
     // Fetch bookings for the selected date
@@ -668,7 +665,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           onClose();
 
       } catch (err: any) {
-           console.error(err);
+           // silent
            showToast("Bulk Update Failed", mapDatabaseError(err), "error");
       } finally {
           setLoading(false);
@@ -910,15 +907,41 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
       if (state === 'Active') {
          const startStr = format(start, "HH:mm:ss");
-         const { error: autoEndError } = await supabase
+         
+         // Log Auto-End State Changes
+         const { data: autoEndedBookings } = await supabase
+            .from('bookings')
+            .select('id, start_time, end_time, state')
+            .eq('room_id', roomId)
+            .eq('booking_day', startDate)
+            .lt('start_time', startStr)
+            .neq('state', 'Ended');
+
+         if (autoEndedBookings && autoEndedBookings.length > 0) {
+              const startDt = parseISO(`${startDate}T${startStr}`); // The time the new booking starts (forcing the end)
+              for (const b of autoEndedBookings) {
+                  const bEnd = parseISO(`${startDate}T${b.end_time}`);
+                  // diff: Time of change (start of new booking causing cut) - Original End Time
+                  const diffMins = differenceInMinutes(startDt, bEnd);
+                  await logEvent('state_change', {
+                      type: 'auto',
+                      state: 'active_to_ended',
+                      time: diffMins
+                  });
+              }
+         }
+
+         const { error: _autoEndError } = await supabase
             .from('bookings')
             .update({ state: 'Ended' })
             .eq('room_id', roomId)
             .eq('booking_day', startDate)
             .lt('start_time', startStr)
             .neq('state', 'Ended');
-            
-         if (autoEndError) console.error("Auto-end error:", autoEndError); 
+
+          if (_autoEndError) {
+             showToast("Error", "Failed to auto-end overlapping bookings", "error");
+          }
       }
 
       const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
@@ -1002,6 +1025,27 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              const { error: updateError } = await supabase.from("bookings").update(oldPayload).eq("id", prefill.booking.id);
              if (updateError) throw updateError;
 
+             // Log Old Booking State Change (Extended)
+             const now = new Date();
+             const bEnd = end; // The end time of the old segment (which is 'end' calculated above)
+             // "difference between the time of the state change and the end time"
+             // State change happens roughly "now". End time is 'end'.
+             // Actually, the old booking ends at 'end'. We are truncating it to 'end' (if it was longer? No, end is start+duration).
+             // Wait, if I extend, "end" is the original end time.
+             // So bEnd is the original end time.
+             // But we are setting it to 'Ended' NOW.
+             // But the booking technically ends at 'end'.
+             // If I do this at 10:55 for a 11:00 end, and I extend.
+             // Old booking ends at 11:00 (state ended). New starts 11:00.
+             // Logic: "when a room is extended automatically ended".
+             // Type: extended. State: ended (Active->Ended).
+             // Time: diff(now, bEnd).
+             await logEvent('state_change', {
+                 type: 'extended',
+                 state: 'active_to_ended',
+                 time: differenceInMinutes(now, bEnd)
+             });
+
              // 2. Create New Booking (Active)
              // Time: End -> ExtendedEnd
              const newPayload = {
@@ -1014,6 +1058,15 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              const { error: insertError } = await supabase.from("bookings").insert(newPayload);
              if (insertError) throw insertError;
 
+             // Log Extension Creation
+             await logEvent('booking_create', {
+                 type: 'extension',
+                 rank: null,
+                 name_entered: isNameManuallyTyped ? 'manual' : 'auto',
+                 state: 'active',
+                 time: creationStartTime ? (Date.now() - creationStartTime) / 1000 : 0
+             });
+
              showToast("Extended", "Booking extended (new session created)", "success");
         } else {
             // Standard Update
@@ -1025,6 +1078,37 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             };
             const { error } = await supabase.from("bookings").update(payload).eq("id", prefill.booking.id);
             if (error) throw error;
+
+            // Log Manual State Change
+            if (state !== prefill.booking.state) {
+                 const now = new Date();
+                 let timeDiff = 0;
+                 let targetState: 'reserved_to_active' | 'active_to_ended' | null = null;
+                 
+                 // Reserved -> Active
+                 if (prefill.booking.state === 'Reserved' && state === 'Active') {
+                     // diff between state change and starting time
+                     const bStart = parseISO(`${prefill.booking.booking_day}T${prefill.booking.start_time}`);
+                     timeDiff = differenceInMinutes(now, bStart);
+                     targetState = 'reserved_to_active';
+                 }
+                 // Active -> Ended
+                 else if (prefill.booking.state === 'Active' && state === 'Ended') {
+                     // diff between state change and end time
+                     const bEnd = parseISO(`${prefill.booking.booking_day}T${prefill.booking.end_time}`);
+                     timeDiff = differenceInMinutes(now, bEnd);
+                     targetState = 'active_to_ended';
+                 }
+
+                 if (targetState) {
+                     await logEvent('state_change', {
+                         type: 'manual',
+                         state: targetState,
+                         time: timeDiff
+                     });
+                 }
+            }
+
             showToast("Updated", "Booking updated", "success");
         }
       } else {
@@ -1044,13 +1128,23 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         };
         const { error } = await supabase.from("bookings").insert(payload);
         if (error) throw error;
+
+        // Log Creation
+        await logEvent('booking_create', {
+             type: isSmartSelecting ? 'smart' : 'manual',
+             rank: isSmartSelecting ? (currentRankIndex + 1) : null,
+             name_entered: isNameManuallyTyped ? 'manual' : 'auto',
+             state: (state as string).toLowerCase() as any, 
+             time: creationStartTime ? (Date.now() - creationStartTime) / 1000 : 0
+        });
+
         showToast("Saved", "Booking created", "success");
       }
       resetFormToDefaults();
       onBookingUpdate?.();
       onClose();
     } catch (err: any) {
-      console.error(err);
+      // silent
       showToast("Save failed", mapDatabaseError(err), "error");
     } finally {
       setLoading(false);
@@ -1411,7 +1505,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                 {errors.bulkRooms && <FormHelperText error>Select at least one room</FormHelperText>}
                             </Grid>
                             <Grid item xs={12}>
-                                <TextField fullWidth label="Staff Name" value={staffName} onChange={e => setStaffName(e.target.value)} error={!!errors.staffName} />
+                                <TextField fullWidth label="Staff Name" value={staffName} onChange={e => { setStaffName(e.target.value); setIsNameManuallyTyped(true); }} error={!!errors.staffName} />
                             </Grid>
                             
                         </>
@@ -1469,7 +1563,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                 </TextField>
                             </Grid>
                              <Grid item xs={6}>
-                                <TextField fullWidth label="Staff Name" value={staffName} onChange={e => setStaffName(e.target.value)} error={!!errors.staffName} />
+                                <TextField fullWidth label="Staff Name" value={staffName} onChange={e => { setStaffName(e.target.value); setIsNameManuallyTyped(true); }} error={!!errors.staffName} />
                             </Grid>
                         </>
                     )}

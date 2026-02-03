@@ -18,6 +18,7 @@ import {
   Modal,
   Stack,
   Alert,
+  Snackbar,
   CircularProgress,
   useMediaQuery,
   Card,
@@ -55,6 +56,19 @@ export default function AccessPage() {
   const [addError, setAddError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
 
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{open: boolean, message: string, severity: 'success' | 'error' | 'info'}>({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
+
+  const showToast = (message: string, severity: 'success' | 'error' | 'info' = 'success') => {
+      setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => setSnackbar({ ...snackbar, open: false });
+
   const fetchProfiles = async () => {
     try {
       const { data, error } = await supabase
@@ -66,6 +80,7 @@ export default function AccessPage() {
       setProfiles(data || [])
     } catch (error) {
       console.error('Error fetching profiles:', error)
+      showToast('Failed to load user profiles', 'error')
     } finally {
       setLoading(false)
     }
@@ -90,6 +105,7 @@ export default function AccessPage() {
       if (error) throw error
     } catch (error) {
       console.error('Error updating permission:', error)
+      showToast('Failed to update permission', 'error')
       // Revert on error
       fetchProfiles()
     }
@@ -107,8 +123,10 @@ export default function AccessPage() {
         .eq('email', email)
 
       if (error) throw error
+      showToast('User removed successfully', 'success')
     } catch (error) {
       console.error('Error deleting user:', error)
+      showToast('Failed to delete user', 'error')
       fetchProfiles()
     }
   }
@@ -128,7 +146,7 @@ export default function AccessPage() {
         throw error
       }
 
-      setOpenModal(false)
+      showToast('User added successfully', 'success')
       setNewEmail('')
       fetchProfiles()
     } catch (err: any) {
@@ -378,6 +396,12 @@ export default function AccessPage() {
             <CircularProgress />
         </Box>
       ) : isMobile ? renderMobileView() : renderDesktopView()}
+
+      <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={handleCloseSnackbar}>
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity as any} sx={{ width: '100%' }}>
+            {snackbar.message}
+        </Alert>
+      </Snackbar>
 
       <Modal
         open={openModal}
