@@ -145,13 +145,29 @@ export default function ReportPage() {
            }
         }
 
+        // Parse local date from YYYY-MM-DD
+        const [y, m, d] = (mainBooking.booking_day || "").split('-').map((n: string) => parseInt(n, 10));
+        const bookingDate = (y && m && d) ? new Date(y, m - 1, d) : new Date(0);
+
+        // Convert time string HH:mm:ss to Excel fraction of a day (0.0 to 1.0)
+        // This ensures purely Time values without Date components in Excel
+        const timeToFraction = (timeStr: string) => {
+            if (!timeStr) return 0;
+            const parts = timeStr.split(':').map((n: string) => parseInt(n, 10));
+            // Hours * 3600 + Minutes * 60 + Seconds
+            const seconds = (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+            return seconds / 86400; // 86400 seconds in a day
+        };
+        const startTime = timeToFraction(mainBooking.start_time);
+        const endTime = timeToFraction(mainBooking.end_time);
+
         return {
-          Date: mainBooking.booking_day,
+          Date: bookingDate,
           Room: roomNames,
           Course: courseName,
-          "Start Time": mainBooking.start_time,
-          "End Time": mainBooking.end_time,
-          "Duration (Hours)": duration.toFixed(2),
+          "Start Time": startTime,
+          "End Time": endTime,
+          "Duration (Hours)": Number(duration.toFixed(2)),
           "Booked By": mainBooking.booked_by,
           "Student Numbers": mainBooking.bulk_booking_id ? "" : mainBooking.student_numbers,
           "Student Count": studentCount,
@@ -179,7 +195,7 @@ export default function ReportPage() {
         .map(([room, stats]) => ({
           Room: room,
           "Total Bookings": stats.bookings,
-          "Total Hours": stats.hours.toFixed(2),
+          "Total Hours": Number(stats.hours.toFixed(2)),
         }))
         .sort((a, b) => a.Room.localeCompare(b.Room));
 
@@ -209,32 +225,96 @@ export default function ReportPage() {
         .map(([course, stats]) => ({
           Course: course,
           "Total Bookings": stats.bookings,
-          "Total Hours": stats.hours.toFixed(2),
+          "Total Hours": Number(stats.hours.toFixed(2)),
         }))
         .sort((a, b) => a.Course.localeCompare(b.Course));
 
       // 5. Generate Excel File
       const wb = XLSX.utils.book_new();
 
-      const ws1 = XLSX.utils.json_to_sheet(rawData || []);
+      const ws1 = XLSX.utils.json_to_sheet(rawData || [], { cellDates: true });
+
+      // Apply Column Formatting: Raw Data
+      if (ws1['!ref']) {
+        const range = XLSX.utils.decode_range(ws1['!ref']);
+        const timeFmt = XLSX.SSF.get_table()[20] || 'h:mm'; // Use 24-hour Time format (ID 20)
+
+        for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+          // Date (A)
+          const dateCell = ws1[XLSX.utils.encode_cell({r: R, c: 0})];
+          if (dateCell) { dateCell.t = 'd'; dateCell.z = 'm/d/yy'; }
+
+          // Room (B), Course (C)
+          const roomCell = ws1[XLSX.utils.encode_cell({r: R, c: 1})];
+          if (roomCell) { roomCell.t = 's'; roomCell.z = '@'; }
+          
+          const courseCell = ws1[XLSX.utils.encode_cell({r: R, c: 2})];
+          if (courseCell) { courseCell.t = 's'; courseCell.z = '@'; }
+
+          // Start Time (D), End Time (E)
+          const startCell = ws1[XLSX.utils.encode_cell({r: R, c: 3})];
+          if (startCell) { startCell.t = 'n'; startCell.z = timeFmt; }
+          
+          const endCell = ws1[XLSX.utils.encode_cell({r: R, c: 4})];
+          if (endCell) { endCell.t = 'n'; endCell.z = timeFmt; }
+
+          // Duration (F)
+          const durCell = ws1[XLSX.utils.encode_cell({r: R, c: 5})];
+          if (durCell) { durCell.t = 'n'; durCell.z = '0.00'; }
+
+          // Booked By (G), Student Numbers (H)
+          const bookedByCell = ws1[XLSX.utils.encode_cell({r: R, c: 6})];
+          if (bookedByCell) { bookedByCell.t = 's'; bookedByCell.z = '@'; }
+          
+          const studNumCell = ws1[XLSX.utils.encode_cell({r: R, c: 7})];
+          if (studNumCell) { studNumCell.t = 's'; studNumCell.z = '@'; }
+
+          // Student Count (I)
+          const studCountCell = ws1[XLSX.utils.encode_cell({r: R, c: 8})];
+          if (studCountCell) { studCountCell.t = 'n'; studCountCell.z = '0'; }
+        }
+      }
+
       XLSX.utils.book_append_sheet(wb, ws1, "Raw Data");
 
+      // Helper for other reports
+      const formatStatSheet = (ws: XLSX.WorkSheet) => {
+        if (!ws['!ref']) return;
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+           const labelCell = ws[XLSX.utils.encode_cell({r: R, c: 0})];
+           if (labelCell) { labelCell.t = 's'; labelCell.z = '@'; }
+           
+           const countCell = ws[XLSX.utils.encode_cell({r: R, c: 1})];
+           if (countCell) { countCell.t = 'n'; countCell.z = '0'; }
+           
+           const hourCell = ws[XLSX.utils.encode_cell({r: R, c: 2})];
+           if (hourCell) { hourCell.t = 'n'; hourCell.z = '0.00'; }
+        }
+      };
+
       const ws2 = XLSX.utils.json_to_sheet(roomReport);
+      formatStatSheet(ws2);
       XLSX.utils.book_append_sheet(wb, ws2, "Room Stats");
 
       const ws3 = XLSX.utils.json_to_sheet(courseReport);
+      formatStatSheet(ws3);
       XLSX.utils.book_append_sheet(wb, ws3, "Course Stats");
 
-      // Auto-width columns (simple approximation)
+      // Auto-width columns
       const setColWidth = (ws: XLSX.WorkSheet, data: any[]) => {
         if (data.length === 0) return;
-        const cols = Object.keys(data[0]).map((key) => ({
-          wch:
-            Math.max(
-              key.length,
-              ...data.map((row) => (row[key] ? row[key].toString().length : 0))
-            ) + 2,
-        }));
+        const cols = Object.keys(data[0]).map((key) => {
+          const maxLen = Math.max(
+            key.length,
+            ...data.map((row) => {
+              const val = row[key];
+              if (val instanceof Date) return 12; // Fixed width for dates
+              return val ? val.toString().length : 0;
+            })
+          );
+          return { wch: maxLen + 2 };
+        });
         ws["!cols"] = cols;
       };
 
@@ -259,10 +339,10 @@ export default function ReportPage() {
         <Grid container spacing={{ xs: 2, md: 3 }}>
             {/* Control Panel */}
             <Grid item xs={12}>
-                <Paper sx={{ p: { xs: 2, md: 3 }, display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 4 }, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+                <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 4 } }}>
                     <Box sx={{ flex: 1 }}>
-                        <Typography variant="h5" fontWeight="bold" gutterBottom>Monthly Analytics Export</Typography>
-                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                        <Typography variant="h5" fontWeight="bold" gutterBottom color="text.primary">Monthly Analytics Export</Typography>
+                        <Typography variant="body2" color="text.secondary">
                             Select a month to generate comprehensive Excel reports for administration and planning.
                         </Typography>
                     </Box>
@@ -274,16 +354,11 @@ export default function ReportPage() {
                             onChange={(e) => setSelectedMonth(e.target.value)}
                             variant="outlined"
                             size="small"
-                            sx={{ 
-                                bgcolor: 'background.paper', 
-                                borderRadius: 1, 
-                                minWidth: 200,
-                                '& .MuiOutlinedInput-notchedOutline': { border: 'none' } 
-                            }}
+                            sx={{ minWidth: 200 }}
                         />
                         <Button
                             variant="contained"
-                            color="secondary"
+                            color="primary"
                             onClick={handleGenerateReports}
                             disabled={loading}
                             startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
