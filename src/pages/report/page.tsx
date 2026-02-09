@@ -339,10 +339,10 @@ export default function ReportPage() {
         <Grid container spacing={{ xs: 2, md: 3 }}>
             {/* Control Panel */}
             <Grid item xs={12}>
-                <Paper sx={{ p: { xs: 2, md: 3 }, display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 4 }, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+                <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 4 } }}>
                     <Box sx={{ flex: 1 }}>
-                        <Typography variant="h5" fontWeight="bold" gutterBottom>Monthly Analytics Export</Typography>
-                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                        <Typography variant="h5" fontWeight="bold" gutterBottom color="text.primary">Monthly Analytics Export</Typography>
+                        <Typography variant="body2" color="text.secondary">
                             Select a month to generate comprehensive Excel reports for administration and planning.
                         </Typography>
                     </Box>
@@ -354,16 +354,11 @@ export default function ReportPage() {
                             onChange={(e) => setSelectedMonth(e.target.value)}
                             variant="outlined"
                             size="small"
-                            sx={{ 
-                                bgcolor: 'background.paper', 
-                                borderRadius: 1, 
-                                minWidth: 200,
-                                '& .MuiOutlinedInput-notchedOutline': { border: 'none' } 
-                            }}
+                            sx={{ minWidth: 200 }}
                         />
                         <Button
                             variant="contained"
-                            color="secondary"
+                            color="primary"
                             onClick={handleGenerateReports}
                             disabled={loading}
                             startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
