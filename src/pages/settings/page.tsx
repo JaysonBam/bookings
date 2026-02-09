@@ -67,6 +67,9 @@ export default function SettingsPage() {
   // Settings state
   const [opStart, setOpStart] = useState("08:00");
   const [opEnd, setOpEnd] = useState("17:00");
+  const [satEnabled, setSatEnabled] = useState(false);
+  const [satStart, setSatStart] = useState("09:00");
+  const [satEnd, setSatEnd] = useState("13:00");
   const [testingEnabled, setTestingEnabled] = useState(false);
   const [testingDate, setTestingDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [testingTime, setTestingTime] = useState(() => new Date().toTimeString().slice(0, 5));
@@ -127,6 +130,15 @@ export default function SettingsPage() {
       const v = hoursData.value as any;
       if (v.start) setOpStart(v.start);
       if (v.end) setOpEnd(v.end);
+    }
+
+    // Saturday hours
+    const { data: satData } = await supabase.from("settings").select("value").eq("key", "saturday_hours").single();
+    if (satData?.value) {
+      const v = satData.value as any;
+      if (typeof v.enabled === "boolean") setSatEnabled(!!v.enabled);
+      if (v.start) setSatStart(v.start);
+      if (v.end) setSatEnd(v.end);
     }
 
     const { data: testData } = await supabase.from("settings").select("value").eq("key", "testing_clock").single();
@@ -246,6 +258,10 @@ export default function SettingsPage() {
       const hoursPayload = { start: opStart, end: opEnd };
       await supabase.from("settings").upsert({ key: "operation_hours", value: hoursPayload });
 
+      // Save Saturday hours
+      const satPayload = { enabled: satEnabled, start: satStart, end: satEnd };
+      await supabase.from("settings").upsert({ key: "saturday_hours", value: satPayload });
+
       const testingPayload = { enabled: testingEnabled, date: testingDate, time: testingTime };
       await supabase.from("settings").upsert({ key: "testing_clock", value: testingPayload });
 
@@ -323,6 +339,37 @@ export default function SettingsPage() {
                   size="small"
                 />
               </Stack>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                <Typography variant="subtitle1">Saturday Opening</Typography>
+                <Switch
+                  checked={satEnabled}
+                  onChange={(e) => setSatEnabled(e.target.checked)}
+                  color="primary"
+                />
+              </Box>
+              {satEnabled && (
+                <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 1 }}>
+                  <TextField
+                    label="Saturday Start"
+                    type="time"
+                    value={satStart}
+                    onChange={(e) => setSatStart(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                    size="small"
+                  />
+                  <TextField
+                    label="Saturday End"
+                    type="time"
+                    value={satEnd}
+                    onChange={(e) => setSatEnd(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                    size="small"
+                  />
+                </Stack>
+              )}
             </Paper>
           </Grid>
 
