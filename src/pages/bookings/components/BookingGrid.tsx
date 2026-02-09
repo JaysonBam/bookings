@@ -244,9 +244,30 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
               >
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
                   <div style={{ fontWeight: 'bold' }}>{r.name}</div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 'normal', marginTop: '2px', minHeight: '1.2em' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 'normal', marginTop: '2px', minHeight: '1.2em', display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
                     {r.dynamic_labels && r.dynamic_labels.length > 0 ? (
-                      r.dynamic_labels.map(l => l.split(' ').pop()).join(' ')
+                      r.dynamic_labels.map((l, idx) => (
+                        <span key={idx} style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          position: 'relative',
+                          marginRight: 2
+                        }}>
+                          <span style={{
+                            position: 'absolute',
+                            left: '50%',
+                            top: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: 18,
+                            height: 18,
+                            borderRadius: '50%',
+                            background: '#b0b3b8', // Neutral grey, visible on both themes
+                            zIndex: 0,
+                          }} />
+                          <span style={{ position: 'relative', zIndex: 1, color: '#222' }}>{l.split(' ').pop()}</span>
+                        </span>
+                      ))
                     ) : (
                       '\u00A0'
                     )}

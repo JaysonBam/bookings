@@ -1528,11 +1528,32 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                                 <MenuItem key={r.id} value={String(r.id)}>
                                                     <Box display="flex" justifyContent="space-between" width="100%">
                                                         <Typography color={status?.color || 'inherit'}>{r.name} {status?.text && `(${status.text})`}</Typography>
-                                                        {r.dynamic_labels && r.dynamic_labels.length > 0 && (
-                                                            <Typography sx={{ ml: 1 }}>
-                                                                {r.dynamic_labels.map((l: any) => l.split(' ').pop()).join(' ')}
-                                                            </Typography>
-                                                        )}
+                                                                                                                {r.dynamic_labels && r.dynamic_labels.length > 0 && (
+                                                                                                                        <Typography sx={{ ml: 1, display: 'flex', gap: 0.5 }}>
+                                                                                                                                {r.dynamic_labels.map((l: any, idx: number) => (
+                                                                                                                                    <span key={idx} style={{
+                                                                                                                                        display: 'inline-flex',
+                                                                                                                                        alignItems: 'center',
+                                                                                                                                        justifyContent: 'center',
+                                                                                                                                        position: 'relative',
+                                                                                                                                        marginRight: 2
+                                                                                                                                    }}>
+                                                                                                                                        <span style={{
+                                                                                                                                            position: 'absolute',
+                                                                                                                                            left: '50%',
+                                                                                                                                            top: '50%',
+                                                                                                                                            transform: 'translate(-50%, -50%)',
+                                                                                                                                            width: 18,
+                                                                                                                                            height: 18,
+                                                                                                                                            borderRadius: '50%',
+                                                                                                                                            background: '#b0b3b8', // Neutral grey, visible on both themes
+                                                                                                                                            zIndex: 0,
+                                                                                                                                        }} />
+                                                                                                                                        <span style={{ position: 'relative', zIndex: 1, color: '#222' }}>{l.split(' ').pop()}</span>
+                                                                                                                                    </span>
+                                                                                                                                ))}
+                                                                                                                        </Typography>
+                                                                                                                )}
                                                     </Box>
                                                 </MenuItem>
                                             );
