@@ -1,35 +1,13 @@
 import React, { useMemo, useEffect, useState, useRef, useCallback } from "react";
-import { format, addMinutes, differenceInMinutes, parseISO } from "date-fns";
+import { format, addMinutes, differenceInMinutes } from "date-fns";
 import { supabase } from "../../../lib/supabaseClient";
 import BookingCell from "./BookingCell";
 import { useNow } from "../context/NowContext";
 import { CircularProgress, Box, Table, TableBody, TableRow, TableHead } from "@mui/material";
 import { alpha } from '@mui/material/styles';
-import { StyledTableContainer, StyledHeaderCell, StyledCornerCell, StyledTimeCell } from "../styles";
-
-interface Room {
-  id: string;
-  name: string;
-  capacity?: number | null;
-  is_available?: boolean | null;
-  dynamic_labels?: string[] | null;
-}
-
-interface Booking {
-  id: string;
-  room_id: string;
-  start_time: string; // ISO
-  end_time: string;   // ISO
-  title?: string;
-  color?: string;
-  booked_by?: string;
-  course_id?: number | null;
-  course_name?: string | null;
-  course?: { id: number; name: string; color_hex?: string } | null;
-  state?: 'Active' | 'Reserved' | 'Ended' | undefined;
-  booking_day?: string;
-  bulk_booking_id?: string | null;
-}
+import { StyledTableContainer, StyledHeaderCell, StyledCornerCell, StyledTimeCell, StyledHeaderContent, StyledHeaderName, StyledHeaderMeta, StyledDynamicLabel, StyledLabelBackground, StyledLabelText } from "../styles";
+import { Booking, Room } from "../types";
+import { useDragBooking } from "../hooks/useDragBooking";
 
 interface BookingGridProps {
   selectedDate: Date;
@@ -75,267 +53,25 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
   const { currentTime } = useNow();
 
   // --- Drag & Drop State ---
-  const [dragState, setDragState] = useState<{
-    isDragging: boolean;
-    type: 'CREATE' | 'MOVE' | 'EXTEND';
-    startConfig: { roomId: string; timeSlot: Date } | null;
-    currentConfig: { roomId: string; timeSlot: Date } | null;
-    bookingId: string | null;
-    originalDuration: number;
-    isValid: boolean;
-    hasMoved: boolean;
-    originalColor?: string;
-    dragOffsetInMinutes?: number;
-  }>({
-    isDragging: false,
-    type: 'CREATE',
-    startConfig: null,
-    currentConfig: null,
-    bookingId: null,
-    originalDuration: 30,
-    isValid: true,
-    hasMoved: false
+  const { 
+      dragState, 
+      handleMouseDownCell, 
+      handleMouseDownBooking, 
+      handleExtendStart, 
+      handleMouseEnterCell 
+  } = useDragBooking({
+      bookingsRef,
+      onCellClick,
+      onBookingClick,
+      onMoveBooking,
+      onExtendBooking
   });
 
   useEffect(() => {
     bookingsRef.current = bookings;
   }, [bookings]);
 
-  const checkOverlap = useCallback((roomId: string, start: Date, end: Date, excludeBookingId?: string | null) => {
-    return bookingsRef.current.some(b => {
-      if (excludeBookingId && b.id === excludeBookingId) return false;
-      const bStart = parseISO(b.start_time);
-      const bEnd = parseISO(b.end_time);
-      // Overlap: StartA < EndB && EndA > StartB
-      return b.room_id === roomId && (start < bEnd && end > bStart);
-    });
-  }, []);
 
-  const handleMouseDownCell = (roomId: string, timeSlot: Date) => {
-     // Check if we are clicking on an existing booking? No, BookingCell handles that by deciding what to render.
-     // If we click an empty cell area, start CREATE.
-     const start = timeSlot;
-     const end = addMinutes(timeSlot, 30);
-     setDragState({
-       isDragging: true,
-       type: 'CREATE',
-       startConfig: { roomId, timeSlot },
-       currentConfig: { roomId, timeSlot },
-       bookingId: null,
-       originalDuration: 30,
-       isValid: !checkOverlap(roomId, start, end),
-       hasMoved: false
-     });
-  };
-
-  const handleMouseDownBooking = (bookingId: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault(); // Prevent text selection etc
-      const booking = bookingsRef.current.find(b => b.id === bookingId);
-      if (!booking) return;
-
-      const duration = differenceInMinutes(parseISO(booking.end_time), parseISO(booking.start_time));
-      // Calculate offset based on click position relative to top of element
-      // We can approximate by checking the current time slot (if we could get it)
-      // Or by using rect height.
-      // Easiest is to just assume snap-to-start unless we do advanced math.
-      // But user wants "keep reference".
-      // We can do this: 
-      // 1. Get the bounding rect of the target element. 
-      // 2. Calculate e.clientY - rect.top.
-      // 3. Map (pixelOffset / pixelHeight) * durationMinutes -> offsetMinutes.
-      const rect = e.currentTarget.getBoundingClientRect();
-      const pixelOffset = e.clientY - rect.top;
-      const pixelHeight = rect.height;
-      const offsetRatio = pixelOffset / pixelHeight;
-      const offsetMinutesRaw = offsetRatio * duration;
-      // Round to nearest 30 mins to align with slots
-      const offsetMinutes = Math.floor(offsetMinutesRaw / 30) * 30;
-
-      setDragState({
-          isDragging: true,
-          type: 'MOVE',
-          startConfig: { roomId: booking.room_id, timeSlot: parseISO(booking.start_time) },
-          currentConfig: { roomId: booking.room_id, timeSlot: parseISO(booking.start_time) },
-          bookingId: booking.id,
-          originalDuration: duration,
-          isValid: true,
-          hasMoved: false,
-          originalColor: booking.course?.color_hex ?? booking.color ?? "#64748b",
-          dragOffsetInMinutes: offsetMinutes
-      });
-  };
-
-  const handleExtendStart = (bookingId: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
-      const booking = bookingsRef.current.find(b => b.id === bookingId);
-      if (!booking) return;
-
-      const duration = differenceInMinutes(parseISO(booking.end_time), parseISO(booking.start_time));
-      
-      // Start the extension from the END of the current booking
-      setDragState({
-          isDragging: true,
-          type: 'EXTEND',
-          startConfig: { roomId: booking.room_id, timeSlot: parseISO(booking.end_time) },
-          currentConfig: { roomId: booking.room_id, timeSlot: parseISO(booking.end_time) },
-          bookingId: booking.id,
-          originalDuration: duration,
-          isValid: true,
-          hasMoved: false,
-          originalColor: booking.course?.color_hex ?? booking.color ?? "#64748b"
-      });
-  };
-
-  const handleMouseEnterCell = (roomId: string, timeSlotIso: string) => {
-      if (!dragState.isDragging) {
-         setHoveredCell({ roomId, timeSlotIso });
-         return;
-      }
-      
-      const timeSlot = new Date(timeSlotIso);
-      
-      setDragState(prev => {
-          if (!prev.startConfig) return prev;
-
-          let isValid = true;
-          let newCurrent = { roomId, timeSlot };
-
-          if (prev.type === 'CREATE') {
-              // Lock to start Room
-              newCurrent.roomId = prev.startConfig.roomId;
-              
-              // Lock to start time at minimum (drag down only)
-              if (timeSlot < prev.startConfig.timeSlot) {
-                  newCurrent.timeSlot = prev.startConfig.timeSlot;
-              }
-
-              // Max duration 2 hours
-              let duration = differenceInMinutes(addMinutes(newCurrent.timeSlot, 30), prev.startConfig.timeSlot);
-              if (duration > 120) {
-                  const maxSlots = 4; // 2 hours / 30 mins
-                  newCurrent.timeSlot = addMinutes(prev.startConfig.timeSlot, (maxSlots - 1) * 30);
-                  duration = 120;
-              }
-              
-              const start = prev.startConfig.timeSlot;
-              const end = addMinutes(prev.startConfig.timeSlot, duration);
-              
-              isValid = !checkOverlap(prev.startConfig.roomId, start, end);
-          } 
-          else if (prev.type === 'MOVE') {
-              // Update room and time (unlocked)
-              newCurrent.roomId = roomId;
-
-              // Apply offset to ensure the ghost moves relative to the mouse
-              // If we picked up at +60mins, and we are now at T, the new start time should be T - 60mins.
-              const offset = prev.dragOffsetInMinutes || 0;
-              newCurrent.timeSlot = addMinutes(timeSlot, -offset);
-
-              const start = newCurrent.timeSlot;
-              const end = addMinutes(start, prev.originalDuration);
-              isValid = !checkOverlap(newCurrent.roomId, start, end, prev.bookingId);
-          }
-          else if (prev.type === 'EXTEND') {
-              // Lock Room
-              newCurrent.roomId = prev.startConfig.roomId;
-              
-              // Lock Start Time to start of EXTENSION (which is end of original booking)
-              const start = prev.startConfig.timeSlot; 
-              
-              // Determine new end time based on mouse position
-              let proposedEnd = addMinutes(timeSlot, 30);
-              
-              // Cap Extension at 2 hours (120 min)
-              // If dragging > 120min, clamp end to start + 120.
-              const duration = differenceInMinutes(proposedEnd, start);
-              
-              // We need to calculate what the "visual" end is first to check overlap properly.
-              let targetEnd = proposedEnd;
-
-              if (targetEnd <= start) {
-                  targetEnd = start; // Retract to start (0 min)
-              } else {
-                  if (duration > 120) {
-                      targetEnd = addMinutes(start, 120);
-                  }
-              }
-              
-              // Update isValid based on the capped range
-              // Only check overlap if extension > 0
-              if (differenceInMinutes(targetEnd, start) > 0) {
-                  isValid = !checkOverlap(newCurrent.roomId, start, targetEnd, prev.bookingId);
-              } else {
-                  isValid = true; // 0 extension is valid (cancel)
-              }
-              
-              // We want the visual ghost to stop growing at 2 hours, even if mouse goes further.
-              // So we fake the Mouse Position stored in state if we exceed the cap.
-              // But render loop calculates End from `currentConfig.timeSlot`.
-              // `targetEnd` = `addMinutes(timeSlot, 30)` (approx).
-              // So if we clamp `targetEnd`, we should back-calculate `timeSlot` or better yet change render logic to use calculated vals.
-              // Easier: Just update `newCurrent.timeSlot` so it aligns with `targetEnd`.
-              // targetEnd = newCurrent.timeSlot + 30.
-              // => newCurrent.timeSlot = targetEnd - 30.
-              
-              if (targetEnd > start) {
-                  newCurrent.timeSlot = addMinutes(targetEnd, -30);
-              } else {
-                  // If retracted to start (0 min), ensure mouseUp calculates proposedEnd <= start
-                  // mouseUp logic: proposedEnd = currentConfig.timeSlot + 30
-                  // So we set currentConfig.timeSlot = start - 30
-                  newCurrent.timeSlot = addMinutes(start, -30); 
-              }
-          }
-
-          return {
-              ...prev,
-              hasMoved: true,
-              currentConfig: newCurrent,
-              isValid
-          };
-      });
-  };
-
-  useEffect(() => {
-      const handleMouseUp = () => {
-          if (!dragState.isDragging) return;
-
-          const { type, startConfig, currentConfig, isValid, bookingId, hasMoved } = dragState;
-
-          if (isValid && startConfig && currentConfig) {
-              if (type === 'CREATE') {
-                   const duration = differenceInMinutes(addMinutes(currentConfig.timeSlot, 30), startConfig.timeSlot);
-                   onCellClick(startConfig.roomId, startConfig.timeSlot.toISOString(), duration);
-              } else if (type === 'MOVE' && bookingId) {
-                   if (!hasMoved) {
-                        onBookingClick(bookingId);
-                   } else if ((currentConfig.roomId !== startConfig.roomId || currentConfig.timeSlot.getTime() !== startConfig.timeSlot.getTime()) && onMoveBooking) {
-                       onMoveBooking(bookingId, currentConfig.roomId, currentConfig.timeSlot.toISOString());
-                   }
-              } else if (type === 'EXTEND' && bookingId && onExtendBooking) {
-                   const start = startConfig.timeSlot;
-                   let proposedEnd = addMinutes(currentConfig.timeSlot, 30);
-                   
-                   // If proposedEnd <= start, the user dragged back or up.
-                   // The request: "if retract back to no extension... do not extend"
-                   if (proposedEnd > start) {
-                        const duration = differenceInMinutes(proposedEnd, start);
-                        if (duration >= 30) {
-                             onExtendBooking(bookingId, duration);
-                        }
-                   }
-                   // Else: do nothing (cancel)
-              }
-          }
-
-          setDragState(prev => ({ ...prev, isDragging: false, startConfig: null, currentConfig: null, bookingId: null, hasMoved: false }));
-      };
-
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => window.removeEventListener('mouseup', handleMouseUp);
-  }, [dragState, onCellClick, onMoveBooking, onExtendBooking]);
 
   useEffect(() => {
     const load = async () => {
@@ -505,37 +241,21 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
                     })
                 })}
               >
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
-                  <div style={{ fontWeight: 'bold' }}>{r.name}</div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 'normal', marginTop: '2px', minHeight: '1.2em', display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
+                <StyledHeaderContent>
+                  <StyledHeaderName>{r.name}</StyledHeaderName>
+                  <StyledHeaderMeta>
                     {r.dynamic_labels && r.dynamic_labels.length > 0 ? (
                       r.dynamic_labels.map((l, idx) => (
-                        <span key={idx} style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          position: 'relative',
-                          marginRight: 2
-                        }}>
-                          <span style={{
-                            position: 'absolute',
-                            left: '50%',
-                            top: '50%',
-                            transform: 'translate(-50%, -50%)',
-                            width: 18,
-                            height: 18,
-                            borderRadius: '50%',
-                            background: '#b0b3b8', // Neutral grey, visible on both themes
-                            zIndex: 0,
-                          }} />
-                          <span style={{ position: 'relative', zIndex: 1, color: '#222' }}>{l.split(' ').pop()}</span>
-                        </span>
+                        <StyledDynamicLabel key={idx}>
+                          <StyledLabelBackground />
+                          <StyledLabelText>{l.split(' ').pop()}</StyledLabelText>
+                        </StyledDynamicLabel>
                       ))
                     ) : (
                       '\u00A0'
                     )}
-                  </div>
-                </div>
+                  </StyledHeaderMeta>
+                </StyledHeaderContent>
               </StyledHeaderCell>
             ))}
           </TableRow>

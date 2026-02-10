@@ -3,7 +3,14 @@ import { parseISO } from "date-fns";
 import { Button, Box, Typography } from "@mui/material";
 import { useNow } from "../context/NowContext";
 import { getBookingSoftState } from "../utils/helpers";
-import { StyledBookingCell } from "../styles";
+import { 
+    StyledBookingCell, 
+    StyledStatusDot, 
+    StyledQuickActionOverlay, 
+    StyledResizeHandle, 
+    StyledPreviewBox, 
+    StyledIntersectionPreview 
+} from "../styles";
 
 interface BookingCellProps {
   booking?: {
@@ -98,29 +105,15 @@ export const BookingCell: React.FC<BookingCellProps> = ({
   // Helper to render the drag preview overlay
   const renderPreview = (p: NonNullable<BookingCellProps['preview']>) => {
       const isValid = p.isValid !== false;
-      const isStartP = p.isStart;
-      const isEndP = p.isEnd;
-      const bg = isValid ? (p.type === 'CREATE' ? 'primary.main' : (p.color || 'info.main')) : 'error.main';
-      
-      const borderTop = isStartP ? '2px dashed rgba(255,255,255,0.5)' : 'none';
-      const borderBottom = isEndP ? '2px dashed rgba(255,255,255,0.5)' : 'none';
-      const borderX = '2px dashed rgba(255,255,255,0.5)';
-
       return (
-           <Box sx={{
-               position: 'absolute', 
-               inset: 0,
-               bgcolor: bg,
-               opacity: isValid ? 0.8 : 0.6,
-               borderTop: borderTop,
-               borderBottom: borderBottom,
-               borderLeft: borderX,
-               borderRight: borderX,
-               display: 'flex', alignItems: 'center', justifyContent: 'center',
-               zIndex: 5,
-               pointerEvents: 'none'
-           }}>
-             {isStartP && (
+           <StyledPreviewBox
+               isValid={isValid}
+               isStart={p.isStart}
+               isEnd={p.isEnd}
+               color={p.color}
+               type={p.type}
+           >
+             {p.isStart && (
                  <Typography variant="caption" fontWeight="bold" sx={{ 
                      color: '#fff', 
                      textShadow: '0px 1px 2px rgba(0,0,0,0.6)', 
@@ -128,24 +121,17 @@ export const BookingCell: React.FC<BookingCellProps> = ({
                      {p.label || (isValid ? (p.type === 'CREATE' ? '+ New' : 'Move') : 'Conflict')}
                  </Typography>
              )}
-           </Box>
+           </StyledPreviewBox>
       );
   };
   
-  // Helper to render Intersection Override (for multi-row bookings)
   const renderIntersectionPreview = () => {
-      // Logic: 
-      // 1. We know this cell occupies [start, end]
-      // 2. We compare with dragGlobal [dStart, dEnd]
-      // 3. Render box for the intersection
       if (!dragGlobal || !booking) return null;
       const bStart = parseISO(booking.start_time);
       const bEnd = parseISO(booking.end_time);
-      
       const dStart = dragGlobal.start;
       const dEnd = dragGlobal.end;
       
-      // Check intersection
       if (dEnd <= bStart || dStart >= bEnd) return null;
       
       const overlapStart = new Date(Math.max(bStart.getTime(), dStart.getTime()));
@@ -159,24 +145,16 @@ export const BookingCell: React.FC<BookingCellProps> = ({
       
       const topPct = (startOffset / sessionDuration) * 100;
       const heightPct = (overlapDuration / sessionDuration) * 100;
-      
       const isValid = dragGlobal.isValid;
-      const bg = isValid ? (dragGlobal.type === 'CREATE' ? 'primary.main' : (dragGlobal.color || 'info.main')) : 'error.main';
-      
+
       return (
-         <Box sx={{
-            position: 'absolute',
-            left: 0, right: 0,
-            top: `${topPct}%`,
-            height: `${heightPct}%`,
-            bgcolor: bg,
-            opacity: isValid ? 0.8 : 0.6,
-            border: '2px dashed rgba(255,255,255,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 10, // Higher than normal content
-            pointerEvents: 'none'
-         }}>
-             {/* Only show text if tall enough? */}
+         <StyledIntersectionPreview
+            isValid={isValid}
+            color={dragGlobal.color}
+            type={dragGlobal.type}
+            topPct={topPct}
+            heightPct={heightPct}
+         >
              {heightPct > 20 && (
                 <Typography variant="caption" fontWeight="bold" sx={{ 
                      color: '#fff', 
@@ -185,7 +163,7 @@ export const BookingCell: React.FC<BookingCellProps> = ({
                      {dragGlobal.label || (isValid ? (dragGlobal.type === 'CREATE' ? '+ New' : 'Move') : 'Conflict')}
                  </Typography>
              )}
-         </Box>
+         </StyledIntersectionPreview>
       );
   }
 
@@ -299,11 +277,7 @@ export const BookingCell: React.FC<BookingCellProps> = ({
       }}
     >
         <Box sx={{ position: 'relative', width: '100%', height: '100%', p: 1 }}>
-            <Box sx={{ 
-                position: 'absolute', top: 4, right: 4, width: 8, height: 8, 
-                borderRadius: '50%', backgroundColor: getStatusDotColor(booking.state),
-                boxShadow: 1
-            }} />
+            <StyledStatusDot color={getStatusDotColor(booking.state)} />
             <Typography variant="caption" fontWeight="bold" display="block" noWrap>
                 {booking.course?.name ?? booking.course_name ?? 'Course'}
             </Typography>
@@ -312,14 +286,7 @@ export const BookingCell: React.FC<BookingCellProps> = ({
             </Typography>
 
             {showQuickAction && onQuickAction && booking.state !== 'Ended' && (
-                <Box 
-                    onMouseDown={(e) => e.stopPropagation()}
-                    sx={{ 
-                    position: 'absolute', inset: 0, 
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    bgcolor: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(1px)',
-                    zIndex: 2, borderRadius: 1
-                }}>
+                <StyledQuickActionOverlay onMouseDown={(e) => e.stopPropagation()}>
                     <Button 
                         size="small" 
                         variant="contained" 
@@ -335,47 +302,20 @@ export const BookingCell: React.FC<BookingCellProps> = ({
                     >
                         {booking.state === 'Reserved' ? 'Start' : 'End'}
                     </Button>
-                </Box>
+                </StyledQuickActionOverlay>
             )}
 
-            {/* Resize Handle - Only show on hover/active */}
             {onResizeStart && booking.state !== 'Ended' && (
-                <Box
+                <StyledResizeHandle
                     className="resize-handle"
                     onMouseDown={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         onResizeStart(booking.id, e);
                     }} 
-                    sx={{
-                        position: 'absolute',
-                        bottom: -5, // Extend slightly below the cell for easier grabbing
-                        left: 0, 
-                        right: 0,
-                        height: 15, // Larger hit area (10px inside, 5px outside)
-                        cursor: 'ns-resize',
-                        zIndex: 10,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        opacity: 0,
-                        transition: 'opacity 0.2s',
-                        '&:hover': { opacity: 1 },
-                        // Visual indicator pill
-                        '&::after': {
-                            content: '""',
-                            width: 40,
-                            height: 4,
-                            bgcolor: 'rgba(255,255,255,0.9)',
-                            borderRadius: 2,
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.3)'
-                        }
-                    }}
                 />
             )}
 
-            {/* If we have global drag intersection logic (preferred for multi-row), use it. 
-                Otherwise fall back to per-slot preview if exists (legacy/single-slot). */}
             {dragGlobal ? renderIntersectionPreview() : (preview?.isPartOfDrag && renderPreview(preview))}
         </Box>
         <style>{`
