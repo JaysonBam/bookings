@@ -31,6 +31,7 @@ import CircleIcon from '@mui/icons-material/Circle';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import SearchIcon from '@mui/icons-material/Search';
 import YouTubeIcon from '@mui/icons-material/YouTube';
+import OpenWithIcon from '@mui/icons-material/OpenWith';
 
 import { useLayout } from '../../components/LayoutContext';
 
@@ -103,14 +104,135 @@ export default function DocumentPage() {
                         
                         <CardContent sx={{ p: { xs: 2, md: 4 } }}>
                             <Stack spacing={{ xs: 4, md: 6 }}>
-                                
-                                {/* 1. Understanding Bookings */}
+
+                                {/* 1. Quick Guides: How to Book, Edit & Extend */}
                                 <Box>
                                     <Typography variant="h6" fontWeight="bold" gutterBottom>
-                                        1. Understanding Bookings
+                                        1. Quick Guides
+                                    </Typography>
+
+                                    {/* How to Book */}
+                                    <Box sx={{ mb: 4 }}>
+                                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom color="primary.main">
+                                            How to book a room
+                                        </Typography>
+                                        <Box display="grid" gridTemplateColumns={{ xs: '1fr', md: '1fr 1fr 1fr' }} gap={2}>
+                                            <Paper variant="outlined" sx={{ p: 2, bgcolor: theme.palette.background.paper, position: 'relative', overflow: 'hidden' }}>
+                                                <Box sx={{ position: 'absolute', top: 0, left: 0, bgcolor: 'primary.main', color: 'primary.contrastText', px: 1.5, py: 0.5, borderBottomRightRadius: 8, fontSize: '0.75rem', fontWeight: 'bold' }}>Step 1</Box>
+                                                <Typography variant="subtitle2" fontWeight="bold" sx={{ mt: 2, mb: 1 }}>Initiate Booking</Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    You can start in three ways:
+                                                </Typography>
+                                                <Box component="ul" sx={{ pl: 2, mt: 1, mb: 0, '& li': { fontSize: '0.875rem', color: 'text.secondary', mb: 0.5 } }}>
+                                                    <li>Click the main <strong>"Book Now"</strong> button.</li>
+                                                    <li>Click any <strong>empty cell</strong> on the grid.</li>
+                                                    <li><strong>Click & Drag</strong> on an empty column to set a duration immediately.</li>
+                                                </Box>
+                                            </Paper>
+
+                                            <Paper variant="outlined" sx={{ p: 2, bgcolor: theme.palette.background.paper, position: 'relative', overflow: 'hidden' }}>
+                                                <Box sx={{ position: 'absolute', top: 0, left: 0, bgcolor: 'primary.main', color: 'primary.contrastText', px: 1.5, py: 0.5, borderBottomRightRadius: 8, fontSize: '0.75rem', fontWeight: 'bold' }}>Step 2</Box>
+                                                <Typography variant="subtitle2" fontWeight="bold" sx={{ mt: 2, mb: 1 }}>Fill Details</Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Enter the student details.
+                                                </Typography>
+                                                <Stack spacing={1} sx={{ mt: 1 }}>
+                                                    <Typography variant="caption" display="block" color="text.secondary">
+                                                        <strong>Tip 1:</strong> Use <strong>Smart Select</strong> to auto-pick the best room.
+                                                    </Typography>
+                                                    <Typography variant="caption" display="block" color="text.secondary">
+                                                        <strong>Tip 2:</strong> Type your name in the <strong>Top Header</strong> to auto-fill the Staff field.
+                                                    </Typography>
+                                                </Stack>
+                                            </Paper>
+
+                                            <Paper variant="outlined" sx={{ p: 2, bgcolor: theme.palette.background.paper, position: 'relative', overflow: 'hidden' }}>
+                                                <Box sx={{ position: 'absolute', top: 0, left: 0, bgcolor: 'primary.main', color: 'primary.contrastText', px: 1.5, py: 0.5, borderBottomRightRadius: 8, fontSize: '0.75rem', fontWeight: 'bold' }}>Step 3</Box>
+                                                <Typography variant="subtitle2" fontWeight="bold" sx={{ mt: 2, mb: 1 }}>Confirm Booking</Typography>
+                                                <Typography variant="body2" color="text.secondary" paragraph>
+                                                    Choose your action:
+                                                </Typography>
+                                                <Box component="ul" sx={{ pl: 2, mt: 0, mb: 0, '& li': { fontSize: '0.875rem', color: 'text.secondary', mb: 0.5 } }}>
+                                                    <li><strong>"Book (Active)"</strong>: Student is here now.</li>
+                                                    <li><strong>"Reserve"</strong>: Student will arrive later.</li>
+                                                </Box>
+                                            </Paper>
+                                        </Box>
+                                    </Box>
+
+                                    {/* How to Manage */}
+                                    <Box sx={{ mb: 4 }}>
+                                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom color="primary.main">
+                                            How to manage bookings
+                                        </Typography>
+                                        <Paper variant="outlined" sx={{ p: 2 }}>
+                                            <Stack spacing={2}>
+                                                <Box display="flex" gap={2} alignItems="flex-start">
+                                                    <PendingActionsIcon color="action" />
+                                                    <Box>
+                                                        <Typography variant="subtitle2" fontWeight="bold">Quick Actions (Start/End)</Typography>
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            Hover your mouse over any booking to reveal the action buttons. Click <strong>Start</strong> to activate a reservation, or <strong>End</strong> to finish a booking.
+                                                        </Typography>
+                                                    </Box>
+                                                </Box>
+                                                <Divider />
+                                                <Box display="flex" gap={2} alignItems="flex-start">
+                                                    <ContentCopyIcon color="action" />
+                                                    <Box>
+                                                        <Typography variant="subtitle2" fontWeight="bold">Edit Details</Typography>
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            Click on any booking to open the form and update details.
+                                                        </Typography>
+                                                    </Box>
+                                                </Box>
+                                                <Divider />
+                                                <Box display="flex" gap={2} alignItems="flex-start">
+                                                    <OpenWithIcon color="action" />
+                                                    <Box>
+                                                        <Typography variant="subtitle2" fontWeight="bold">Move by Dragging</Typography>
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            Click and hold a booking, then <strong>drag it</strong> to a new room or time slot.
+                                                        </Typography>
+                                                    </Box>
+                                                </Box>
+                                            </Stack>
+                                        </Paper>
+                                    </Box>
+
+                                    {/* How to Extend */}
+                                    <Box>
+                                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom color="primary.main">
+                                            How to extend a booking
+                                        </Typography>
+                                        <Paper variant="outlined" sx={{ p: 2 }}>
+                                            <Box display="grid" gridTemplateColumns={{ xs: '1fr', md: '1fr 1fr' }} gap={2}>
+                                                <Box>
+                                                    <Typography variant="subtitle2" fontWeight="bold">Option A: Quick Drag</Typography>
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        Hover near the <strong>bottom edge</strong> of a booking. Click and <strong>drag down</strong> to extend.
+                                                    </Typography>
+                                                </Box>
+                                                <Box>
+                                                    <Typography variant="subtitle2" fontWeight="bold">Option B: Manual Extend</Typography>
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        Click the booking and use the <strong>Extend</strong> dropdown in the panel.
+                                                    </Typography>
+                                                </Box>
+                                            </Box>
+                                        </Paper>
+                                    </Box>
+                                </Box>
+
+                                <Divider />
+                                
+                                {/* 2. Understanding Bookings */}
+                                <Box>
+                                    <Typography variant="h6" fontWeight="bold" gutterBottom>
+                                        2. Understanding Booking States
                                     </Typography>
                                     <Typography color="text.secondary" paragraph>
-                                        A booking represents a student or group using a room. It is crucial to manage the <strong>State</strong> of a booking correctly so the system (and other staff) knows what is happening.
+                                        A booking represents group using a room. It is crucial to manage the <strong>State</strong> of a booking correctly so the system (and other staff) knows what is happening.
                                     </Typography>
 
                                     <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
@@ -136,7 +258,7 @@ export default function DocumentPage() {
                                                     <strong>When:</strong> A student wants to book for later.
                                                 </Typography>
                                                 <Typography variant="body2">
-                                                    <strong>How:</strong> Type in a slot or click "Reserve".
+                                                    <strong>To Reserve:</strong> Book a room as reserved with <strong>Reserved</strong> button.
                                                 </Typography>
                                                 <Box display="flex" alignItems="center" gap={1} sx={{ mt: 1, color: 'warning.main' }}>
                                                     <WarningAmberIcon fontSize="small" />
@@ -158,7 +280,7 @@ export default function DocumentPage() {
                                                     <strong>When:</strong> The student is <strong>currently</strong> in the room and has the Room Card.
                                                 </Typography>
                                                 <Typography variant="body2">
-                                                    <strong>To Activate:</strong> The main method is to hover over a reserved booking and click the <strong>Activate</strong> button. You can also click "Book-in" for immediate entry.
+                                                    <strong>To Activate:</strong> Book a room as active with <strong>Book (Activate)</strong> button. Or hover over a reserved booking and click the <strong>Activate</strong> button.
                                                 </Typography>
                                             </Stack>
                                         </Paper>
@@ -195,10 +317,10 @@ export default function DocumentPage() {
 
                                 <Divider />
 
-                                {/* 2. Essential Details */}
+                                {/* 3. Essential Details */}
                                 <Box>
                                     <Typography variant="h6" fontWeight="bold" gutterBottom>
-                                        2. Essential Details
+                                        3. Essential Details
                                     </Typography>
                                     <Stack spacing={2}>
                                         <Box>
@@ -228,11 +350,11 @@ export default function DocumentPage() {
 
                                 <Divider />
 
-                                {/* 3. Smart Select */}
+                                {/* 4. Smart Select */}
                                 <Box>
                                     <Box display="flex" alignItems="center" gap={1} mb={1}>
                                         <AutoModeIcon color="primary" />
-                                        <Typography variant="h6" fontWeight="bold">3. Smart Select</Typography>
+                                        <Typography variant="h6" fontWeight="bold">4. Smart Select</Typography>
                                     </Box>
                                     <Typography variant="body1" paragraph>
                                         The <strong>Smart Select</strong> button automatically chooses the most optimal room based on availability and constraints. It is the fastest way to create a booking.
@@ -266,10 +388,10 @@ export default function DocumentPage() {
 
                                 <Divider />
 
-                                {/* 4. Visual Aids & Tools */}
+                                {/* 5. Visual Aids & Tools */}
                                 <Box>
                                     <Typography variant="h6" fontWeight="bold" gutterBottom>
-                                        4. Visual Aids & Tools
+                                        5. Visual Aids & Tools
                                     </Typography>
                                     <Box display="grid" gridTemplateColumns={{ xs: '1fr', md: '1fr 1fr' }} gap={{ xs: 3, md: 4 }}>
                                         <Box>
@@ -308,10 +430,10 @@ export default function DocumentPage() {
 
                                 <Divider />
 
-                                {/* 5. Advanced Features */}
+                                {/* 6. Advanced Features */}
                                 <Box>
                                     <Typography variant="h6" fontWeight="bold" gutterBottom>
-                                        5. Advanced Features
+                                        6. Advanced Features
                                     </Typography>
                                     <Stack direction={{ xs: 'column', md: 'row' }} gap={2}>
                                         <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
