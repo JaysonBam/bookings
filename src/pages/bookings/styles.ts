@@ -109,7 +109,7 @@ export const StyledBookingCell = styled(TableCell, {
   }),
 }));
 
-export const StyledResizeHandle = styled(Box)(({ theme }) => ({
+export const StyledResizeHandle = styled(Box)(() => ({
   position: 'absolute',
   bottom: -5,
   left: 0,
@@ -240,18 +240,18 @@ export const StyledBookingPanelContents = styled(Box)(({ theme }) => ({
     gap: theme.spacing(2),
 }));
 
-export const StyledHeaderContent = styled(Box)(({ theme }) => ({
+export const StyledHeaderContent = styled(Box)(() => ({
   display: 'flex', 
   flexDirection: 'column', 
   alignItems: 'center', 
   justifyContent: 'flex-end'
 }));
 
-export const StyledHeaderName = styled(Box)(({ theme }) => ({
+export const StyledHeaderName = styled(Box)(() => ({
   fontWeight: 'bold'
 }));
 
-export const StyledHeaderMeta = styled(Box)(({ theme }) => ({
+export const StyledHeaderMeta = styled(Box)(() => ({
   fontSize: '0.75rem', 
   fontWeight: 'normal', 
   marginTop: '2px', 
@@ -262,7 +262,7 @@ export const StyledHeaderMeta = styled(Box)(({ theme }) => ({
   alignItems: 'center'
 }));
 
-export const StyledDynamicLabel = styled('span')(({ theme }) => ({
+export const StyledDynamicLabel = styled('span')(() => ({
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -270,7 +270,7 @@ export const StyledDynamicLabel = styled('span')(({ theme }) => ({
   marginRight: '2px'
 }));
 
-export const StyledLabelBackground = styled('span')(({ theme }) => ({
+export const StyledLabelBackground = styled('span')(() => ({
   position: 'absolute',
   left: '50%',
   top: '50%',
@@ -282,7 +282,7 @@ export const StyledLabelBackground = styled('span')(({ theme }) => ({
   zIndex: 0,
 }));
 
-export const StyledLabelText = styled('span')(({ theme }) => ({
+export const StyledLabelText = styled('span')(() => ({
   position: 'relative', 
   zIndex: 1, 
   color: '#222'
