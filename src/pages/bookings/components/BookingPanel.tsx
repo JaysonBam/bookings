@@ -19,7 +19,7 @@ import { logEvent } from "../../../lib/log";
 interface BookingPanelProps {
   open: boolean;
   onClose: () => void;
-  prefill?: { roomId?: string; timeSlot?: string; booking?: any } | null;
+  prefill?: { roomId?: string; timeSlot?: string; booking?: any; duration?: number } | null;
   defaultStaffName?: string;
   showToast?: (title: string, description: string, severity?: "success" | "error" | "info") => void;
   onBookingUpdate?: () => void;
@@ -67,6 +67,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             return String(mins)
           } catch(e) {}
       }
+      if (prefill?.duration) return String(prefill.duration);
       return "30"
   });
 

@@ -7,7 +7,7 @@ import { BookingPanel } from "./components/BookingPanel";
 import { SearchPanel } from "./components/SearchPanel";
 import { useConfirm, ConfirmDialogProvider } from "./context/ConfirmDialogContext";
 import { NowProvider } from "./context/NowContext";
-import { format, parseISO, differenceInMinutes } from "date-fns";
+import { format, parseISO, differenceInMinutes, addMinutes } from "date-fns";
 import { Snackbar, Alert } from "@mui/material";
 import { StyledPageContainer, StyledContentContainer, StyledGridContainer } from "./styles";
 import { useLayout } from "../../components/LayoutContext";
@@ -133,10 +133,147 @@ const BookingsContent = () => {
         setPanelOpen(true);
     }, []);
 
-    const handleCellClick = (roomId: string, timeSlotIso: string) => {
-        setPanelData({ roomId, timeSlot: timeSlotIso });
+    const handleCellClick = (roomId: string, timeSlotIso: string, duration = 30) => {
+        setPanelData({ roomId, timeSlot: timeSlotIso, duration });
         setCreationStartTime(Date.now());
         setPanelOpen(true);
+    };
+
+    const handleMoveBooking = async (bookingId: string, newRoomId: string, newStartTime: string) => {
+        const { data: booking } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
+        if (!booking) return;
+
+        const newRoom = rooms.find(r => r.id === newRoomId)?.name || "New Room";
+        const newStart = parseISO(newStartTime);
+        const timeStr = format(newStart, "HH:mm");
+
+        try {
+            const confirmed = await confirm({
+                title: "Confirm Move",
+                description: `Move "${booking.course_name || 'Booking'}" to ${newRoom} at ${timeStr}?`,
+                confirmText: "Move",
+                cancelText: "Cancel"
+            });
+
+            if (!confirmed) return;
+
+            // Handle start/end parsing robustly. Booking usually stores "YYYY-MM-DD" in booking_day 
+            // and "HH:mm:ss" in start_time/end_time.
+            // When moving, newStartTime is a full ISO date string.
+            
+            // 1. Calculate original duration
+            const originalStart = parseISO(`${booking.booking_day}T${booking.start_time}`);
+            const originalEnd = parseISO(`${booking.booking_day}T${booking.end_time}`);
+            const duration = differenceInMinutes(originalEnd, originalStart);
+
+            // 2. Calculate new end date (Full Date Object)
+            const newStartObj = parseISO(newStartTime);
+            const newEndObj = addMinutes(newStartObj, duration);
+
+            // 3. Extract parts for Supabase update (Time vs Date columns)
+            // 'start_time' and 'end_time' are usually TIME columns. 'booking_day' is DATE.
+            const newBookingDay = format(newStartObj, 'yyyy-MM-dd');
+            const newStartTimeStr = format(newStartObj, 'HH:mm:ss');
+            const newEndTimeStr = format(newEndObj, 'HH:mm:ss');
+
+            // Optimistic update or just wait for refresh?
+            // Let's do direct DB update
+            const { error } = await supabase
+                .from('bookings')
+                .update({ 
+                    room_id: newRoomId, 
+                    booking_day: newBookingDay,
+                    start_time: newStartTimeStr,
+                    end_time: newEndTimeStr 
+                })
+                .eq('id', bookingId);
+            
+            if (error) throw error;
+            
+            showToast("Success", "Booking moved successfully", "success");
+            setRefreshGridTrigger(prev => prev + 1);
+
+        } catch (error) {
+            console.error("Move failed:", error);
+            showToast("Error", "Failed to move booking", "error");
+        }
+    };
+
+    const handleExtendBooking = async (bookingId: string, durationMinutes: number) => {
+        const { data: booking } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
+        if (!booking) return;
+
+        // Start of extension is the end of the original booking
+        const startOfExtension = parseISO(`${booking.booking_day}T${booking.end_time}`);
+        const endOfExtension = addMinutes(startOfExtension, durationMinutes);
+        
+        const startTimeStr = format(startOfExtension, "HH:mm:ss");
+        const endTimeStr = format(endOfExtension, "HH:mm:ss");
+
+        try {
+            const confirmed = await confirm({
+                title: "Confirm Extension",
+                description: `Create extension for "${booking.course_name || 'Booking'}" (+${durationMinutes} min)?`,
+                confirmText: "Extend",
+                cancelText: "Cancel"
+            });
+
+            if (!confirmed) return;
+            
+            // 1. End the previous booking (as per methodology)
+            // Time: Start -> End (Original end time)
+            // State: Active -> Ended
+             const { error: updateError } = await supabase
+                 .from('bookings')
+                 .update({ state: 'Ended' })
+                 .eq('id', bookingId);
+
+             if (updateError) throw updateError;
+             
+             // Log the state change for the old booking
+             await logEvent('state_change', {
+                 type: 'extended',
+                 state: 'active_to_ended',
+                 time: 0 // rough estimate or diff from now? Panel uses diff(now, originalEnd). We can use 0 for simplicity or calc it.
+             });
+
+            // 2. Create New Booking (Clone logic)
+             const newPayload = {
+                 room_id: booking.room_id,
+                 booking_day: booking.booking_day,
+                 start_time: startTimeStr,
+                 end_time: endTimeStr,
+                 state: 'Active',
+                 booked_by: booking.booked_by,
+                 course_id: booking.course_id,
+                 course_name: booking.course_name,
+                 borrowed_items: booking.borrowed_items,
+                 student_numbers: booking.student_numbers,
+                 description: booking.description,
+                 bulk_booking_id: booking.bulk_booking_id,
+                 title: booking.title,
+                 color: booking.color
+             };
+
+             const { error } = await supabase.from("bookings").insert(newPayload);
+
+            if (error) throw error;
+            
+            await logEvent('booking_create', {
+                 type: 'extension',
+                 rank: null,
+                 name_entered: 'auto', 
+                 state: 'active',
+                 time: 0
+            });
+            
+            showToast("Success", "Booking extended", "success");
+            setRefreshGridTrigger(prev => prev + 1);
+
+        } catch (error) {
+            console.error("Extension failed:", error);
+            showToast("Error", "Failed to extend booking", "error");
+        }
     };
 
     const handleBookingClick = (bookingId: string) => {
@@ -354,6 +491,8 @@ const BookingsContent = () => {
                         onCellClick={handleCellClick}
                         onBookingClick={handleBookingClick}
                         onQuickAction={handleQuickAction}
+                        onMoveBooking={handleMoveBooking}
+                        onExtendBooking={handleExtendBooking}
                         highlightedBookingId={highlightedBookingId}
                         refreshTrigger={refreshGridTrigger}
                         showToast={showToast}
