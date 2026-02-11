@@ -1,4 +1,4 @@
-import { styled } from '@mui/material/styles';
+import { styled, alpha } from '@mui/material/styles';
 import { TableCell, TableContainer, Box, Paper, Toolbar } from '@mui/material';
 
 export const StyledPageContainer = styled(Box)(({ theme }) => ({
@@ -153,25 +153,34 @@ export const StyledPreviewBox = styled(Box, {
   isEnd?: boolean;
   color?: string;
   type?: 'CREATE' | 'MOVE';
-}>(({ theme, isValid, isStart, isEnd, color, type }) => ({
-  position: 'absolute',
-  inset: 0,
-  backgroundColor: isValid
+}>(({ theme, isValid, isStart, isEnd, color, type }) => {
+    const baseColor = isValid
     ? type === 'CREATE'
       ? theme.palette.primary.main
       : color || theme.palette.info.main
-    : theme.palette.error.main,
-  opacity: isValid ? 0.8 : 0.6,
-  borderTop: isStart ? '2px dashed rgba(255,255,255,0.5)' : 'none',
-  borderBottom: isEnd ? '2px dashed rgba(255,255,255,0.5)' : 'none',
-  borderLeft: '2px dashed rgba(255,255,255,0.5)',
-  borderRight: '2px dashed rgba(255,255,255,0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 5,
-  pointerEvents: 'none',
-}));
+    : theme.palette.error.main;
+    
+    const textColor = theme.palette.getContrastText(baseColor);
+    const borderColor = alpha(textColor, 0.5);
+
+  return {
+      position: 'absolute',
+      inset: 0,
+      backgroundColor: alpha(baseColor, 0.85),
+      color: textColor,
+      // opacity: isValid ? 0.8 : 0.6, // Removed opacity to keep content sharp
+      borderTop: isStart ? `2px dashed ${borderColor}` : 'none',
+      borderBottom: isEnd ? `2px dashed ${borderColor}` : 'none',
+      borderLeft: `2px dashed ${borderColor}`,
+      borderRight: `2px dashed ${borderColor}`,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 5,
+      pointerEvents: 'none',
+      boxShadow: `inset 0 0 10px ${alpha(baseColor, 0.3)}`,
+  };
+});
 
 export const StyledIntersectionPreview = styled(Box, {
     shouldForwardProp: (prop) => prop !== 'topPct' && prop !== 'heightPct' && prop !== 'isValid' && prop !== 'color' && prop !== 'type',
@@ -181,25 +190,39 @@ export const StyledIntersectionPreview = styled(Box, {
     isValid: boolean;
     color?: string;
     type?: 'CREATE' | 'MOVE';
-}>(({ theme, topPct, heightPct, isValid, color, type }) => ({
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: `${topPct}%`,
-    height: `${heightPct}%`,
-    backgroundColor: isValid
+}>(({ theme, topPct, heightPct, isValid, color, type }) => {
+    // Determine the base color for the box
+    const baseColor = isValid
       ? type === 'CREATE'
         ? theme.palette.primary.main
         : color || theme.palette.info.main
-      : theme.palette.error.main,
-    opacity: isValid ? 0.8 : 0.6,
-    border: '2px dashed rgba(255,255,255,0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-    pointerEvents: 'none',
-}));
+      : theme.palette.error.main;
+    
+    // Calculate readable text color
+    const textColor = theme.palette.getContrastText(baseColor);
+
+    return {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: `${topPct}%`,
+        height: `${heightPct}%`,
+        // Use alpha for background transparency while keeping child text opaque
+        backgroundColor: alpha(baseColor, 0.85),
+        color: textColor,
+        // Add a subtle border
+        border: `2px dashed ${alpha(textColor, 0.5)}`, // Border matches text color
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10,
+        pointerEvents: 'none',
+        // Add shadow and blur for better contrast against grid lines
+        boxShadow: `0 4px 12px ${alpha(baseColor, 0.4)}`,
+        backdropFilter: 'blur(1.5px)',
+        borderRadius: 4,
+    };
+});
 
 export const StyledStatusDot = styled(Box)<{ color: string }>(({ color }) => ({
     position: 'absolute',

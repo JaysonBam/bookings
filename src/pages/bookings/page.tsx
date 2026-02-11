@@ -139,8 +139,8 @@ const BookingsContent = () => {
         setPanelOpen(true);
     }, []);
 
-    const handleCellClick = (roomId: string, timeSlotIso: string, duration = 30) => {
-        setPanelData({ roomId, timeSlot: timeSlotIso, duration });
+    const handleCellClick = (roomId: string, timeSlotIso: string, duration = 30, isDrag = false) => {
+        setPanelData({ roomId, timeSlot: timeSlotIso, duration, isDrag });
         setCreationStartTime(Date.now());
         setPanelOpen(true);
     };

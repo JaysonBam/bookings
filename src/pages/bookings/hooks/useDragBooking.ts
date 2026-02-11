@@ -4,7 +4,7 @@ import { Booking, DragState } from '../types';
 
 interface UseDragBookingProps {
   bookingsRef: React.MutableRefObject<Booking[]>;
-  onCellClick: (roomId: string, timeSlotIso: string, duration?: number) => void;
+  onCellClick: (roomId: string, timeSlotIso: string, duration?: number, isDrag?: boolean) => void;
   onBookingClick: (bookingId: string) => void;
   onMoveBooking?: (bookingId: string, newRoomId: string, newStartTime: string) => void;
   onExtendBooking?: (originalBookingId: string, durationMinutes: number) => void;
@@ -193,7 +193,7 @@ export const useDragBooking = ({
       if (isValid && startConfig && currentConfig) {
         if (type === 'CREATE') {
           const duration = differenceInMinutes(addMinutes(currentConfig.timeSlot, 30), startConfig.timeSlot);
-          onCellClick(startConfig.roomId, startConfig.timeSlot.toISOString(), duration);
+          onCellClick(startConfig.roomId, startConfig.timeSlot.toISOString(), duration, hasMoved);
         } else if (type === 'MOVE' && bookingId) {
           if (!hasMoved) {
             onBookingClick(bookingId);

@@ -19,7 +19,7 @@ import { logEvent } from "../../../lib/log";
 interface BookingPanelProps {
   open: boolean;
   onClose: () => void;
-  prefill?: { roomId?: string; timeSlot?: string; booking?: any; duration?: number } | null;
+  prefill?: { roomId?: string; timeSlot?: string; booking?: any; duration?: number; isDrag?: boolean } | null;
   defaultStaffName?: string;
   showToast?: (title: string, description: string, severity?: "success" | "error" | "info") => void;
   onBookingUpdate?: () => void;
@@ -1136,7 +1136,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              rank: isSmartSelecting ? (currentRankIndex + 1) : null,
              name_entered: isNameManuallyTyped ? 'manual' : 'auto',
              state: (state as string).toLowerCase() as any, 
-             time: creationStartTime ? (Date.now() - creationStartTime) / 1000 : 0
+             time: creationStartTime ? (Date.now() - creationStartTime) / 1000 : 0,
+             drag_and_drop: prefill?.isDrag
         });
 
         showToast("Saved", "Booking created", "success");

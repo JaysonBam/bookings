@@ -155,12 +155,20 @@ export const BookingCell: React.FC<BookingCellProps> = ({
             topPct={topPct}
             heightPct={heightPct}
          >
-             {heightPct > 20 && (
-                <Typography variant="caption" fontWeight="bold" sx={{ 
-                     color: '#fff', 
-                     textShadow: '0px 1px 2px rgba(0,0,0,0.6)', 
-                 }}>
-                     {dragGlobal.label || (isValid ? (dragGlobal.type === 'CREATE' ? '+ New' : 'Move') : 'Conflict')}
+             {heightPct > 15 && (
+                <Typography 
+                    variant="caption" 
+                    sx={{ 
+                        color: 'inherit', 
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        letterSpacing: '1px',
+                        textShadow: 'none', // Removed shadow as contrast is now handled by color
+                        fontSize: '0.75rem',
+                        userSelect: 'none'
+                    }}
+                >
+                     {dragGlobal.label || (isValid ? (dragGlobal.type === 'CREATE' ? '+ NEW' : 'MOVE') : 'CONFLICT')}
                  </Typography>
              )}
          </StyledIntersectionPreview>

@@ -122,7 +122,8 @@ export const useBookingActions = ({ rooms, confirm, showToast, setRefreshGridTri
                  rank: null,
                  name_entered: 'auto', 
                  state: 'active',
-                 time: 0
+                 time: 0,
+                 drag_and_drop: true
             });
             
             showToast("Success", "Booking extended", "success");

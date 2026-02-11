@@ -6,6 +6,7 @@ export type BookingCreateDetail = {
   name_entered: 'auto' | 'manual';
   state: 'active' | 'reserved' | 'ended';
   time: number; // seconds
+  drag_and_drop?: boolean;
 };
 
 export type StateChangeDetail = {

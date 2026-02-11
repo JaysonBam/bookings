@@ -14,7 +14,7 @@ interface BookingGridProps {
   rooms?: Room[];
   bookings?: Booking[];
   openingHours?: { start: string; end: string };
-  onCellClick: (roomId: string, timeSlotIso: string, duration?: number) => void;
+  onCellClick: (roomId: string, timeSlotIso: string, duration?: number, isDrag?: boolean) => void;
   onBookingClick: (bookingId: string) => void;
   onQuickAction?: (bookingId: string, action: 'activate' | 'end') => void;
   onMoveBooking?: (bookingId: string, newRoomId: string, newStartTime: string) => void;
