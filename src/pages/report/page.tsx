@@ -174,6 +174,20 @@ export default function ReportPage() {
         };
       });
 
+      // Sort by: 1. Date, 2. Room, 3. Start Time
+      rawData.sort((a, b) => {
+        // Sort by Date first
+        const dateCompare = a.Date.getTime() - b.Date.getTime();
+        if (dateCompare !== 0) return dateCompare;
+        
+        // Then by Room
+        const roomCompare = a.Room.localeCompare(b.Room);
+        if (roomCompare !== 0) return roomCompare;
+        
+        // Finally by Start Time
+        return a["Start Time"] - b["Start Time"];
+      });
+
       // 3. Process Data for Report 2: Room Stats
       const roomStats: Record<string, { bookings: number; hours: number }> = {};
 
@@ -240,9 +254,9 @@ export default function ReportPage() {
         const timeFmt = XLSX.SSF.get_table()[20] || 'h:mm'; // Use 24-hour Time format (ID 20)
 
         for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-          // Date (A)
+          // Date (A) - South African format
           const dateCell = ws1[XLSX.utils.encode_cell({r: R, c: 0})];
-          if (dateCell) { dateCell.t = 'd'; dateCell.z = 'm/d/yy'; }
+          if (dateCell) { dateCell.t = 'd'; dateCell.z = 'dd/mm/yyyy'; }
 
           // Room (B), Course (C)
           const roomCell = ws1[XLSX.utils.encode_cell({r: R, c: 1})];
