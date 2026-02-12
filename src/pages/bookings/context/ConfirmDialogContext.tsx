@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box } from '@mui/material';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 
 interface ConfirmAction {
     label: string;
@@ -11,6 +12,7 @@ interface ConfirmAction {
 interface ConfirmOptions {
     title?: string;
     description?: string;
+    warning?: string;
     confirmText?: string;
     cancelText?: string;
     // New: Custom actions beyond yes/no
@@ -50,6 +52,26 @@ export const ConfirmDialogProvider: React.FC<{ children: ReactNode }> = ({ child
                 <DialogTitle>{options.title || 'Confirm'}</DialogTitle>
                 <DialogContent>
                     <Typography>{options.description || 'Are you sure?'}</Typography>
+                    {options.warning && (
+                        <Box 
+                            sx={{ 
+                                mt: 2, 
+                                p: 1.5, 
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: 1,
+                                backgroundColor: 'rgba(237, 108, 2, 0.1)',
+                                borderRadius: 1,
+                                border: '1px solid',
+                                borderColor: 'rgba(237, 108, 2, 0.3)',
+                            }}
+                        >
+                            <WarningAmberIcon sx={{ color: '#ed6c02', fontSize: '1.3rem', mt: 0.1 }} />
+                            <Typography sx={{ color: 'text.primary', fontSize: '0.9rem' }}>
+                                {options.warning}
+                            </Typography>
+                        </Box>
+                    )}
                 </DialogContent>
                 <DialogActions>
                     {options.actions ? (

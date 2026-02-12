@@ -164,14 +164,60 @@ const BookingsContent = () => {
 
     const handleQuickAction = async (bookingId: string, action: 'activate' | 'end') => {
         try {
-            // Fetch booking to check valid bulk ID
+            // Fetch booking with room information
             const { data: booking, error: fetchError } = await supabase
                 .from('bookings')
-                .select('start_time, end_time, booking_day, borrowed_items, bulk_booking_id')
+                .select('start_time, end_time, booking_day, borrowed_items, bulk_booking_id, room_id, rooms(name)')
                 .eq('id', bookingId)
                 .single();
 
             if (fetchError || !booking) throw fetchError || new Error("Booking not found");
+
+            const roomName = (booking as any).rooms?.name || `Room ${booking.room_id}`;
+            const startTime = format(parseISO(`${booking.booking_day}T${booking.start_time}`), 'HH:mm');
+            const endTime = format(parseISO(`${booking.booking_day}T${booking.end_time}`), 'HH:mm');
+
+            // Calculate current rounded time for warnings
+            const now = await timeLib.getTime();
+            const m = now.getMinutes();
+            const roundedM = Math.round(m / 30) * 30;
+            now.setMinutes(roundedM);
+            now.setSeconds(0);
+            now.setMilliseconds(0);
+
+            const bookingStart = parseISO(`${booking.booking_day}T${booking.start_time}`);
+            const bookingEnd = parseISO(`${booking.booking_day}T${booking.end_time}`);
+
+            // Show initial confirmation dialog
+            if (action === 'activate') {
+                const confirmed = await confirm({
+                    title: "Start Booking",
+                    description: `Start ${startTime} - ${endTime} booking for ${roomName}?`,
+                    confirmText: "Start",
+                    cancelText: "Cancel"
+                });
+                if (!confirmed) return;
+            } else if (action === 'end') {
+                let warningMessage: string | undefined;
+                
+                if (now < bookingEnd) {
+                    if (now <= bookingStart) {
+                        warningMessage = 'Booking has not started or has not been active long enough and will be permanently deleted.';
+                    } else {
+                        const newEndTime = format(now, 'HH:mm');
+                        warningMessage = `Booking is ending early and will be adjusted to ${startTime} - ${newEndTime}.`;
+                    }
+                }
+
+                const confirmed = await confirm({
+                    title: "End Booking",
+                    description: `End booking ${startTime} - ${endTime} for ${roomName}?`,
+                    warning: warningMessage,
+                    confirmText: "End",
+                    cancelText: "Cancel"
+                });
+                if (!confirmed) return;
+            }
 
             let scope = 'single';
             if (booking.bulk_booking_id) {
@@ -216,17 +262,7 @@ const BookingsContent = () => {
                         if (!returned) return;
                     }
 
-                    // Truncate logic
-                    const now = await timeLib.getTime();
-                    const m = now.getMinutes();
-                    const roundedM = Math.round(m / 30) * 30;
-                    now.setMinutes(roundedM);
-                    now.setSeconds(0);
-                    now.setMilliseconds(0);
-
-                    const bookingEnd = parseISO(`${booking.booking_day}T${booking.end_time}`);
-                    const bookingStart = parseISO(`${booking.booking_day}T${booking.start_time}`);
-
+                    // Truncate logic (using already calculated times)
                     if (now < bookingEnd) {
                         if (now <= bookingStart) {
                              // Delete
@@ -279,12 +315,10 @@ const BookingsContent = () => {
                         .eq('bulk_booking_id', booking.bulk_booking_id);
                     if (error) throw error;
                     
-                    const now = await timeLib.getTime();
-                    const bEnd = parseISO(`${booking.booking_day}T${booking.end_time}`);
                     await logEvent('state_change', {
                         type: 'quick',
                         state: 'active_to_ended',
-                        time: differenceInMinutes(now, bEnd)
+                        time: differenceInMinutes(now, bookingEnd)
                     });
 
                     showToast("Success", `Group ended`, "success");
@@ -293,9 +327,6 @@ const BookingsContent = () => {
             }
 
             // ACTIVATE Logic
-            const nowForLog = await timeLib.getTime();
-            const bStart = parseISO(`${booking.booking_day}T${booking.start_time}`);
-
             if (scope === 'group') {
                 const { error } = await supabase
                     .from('bookings')
@@ -306,7 +337,7 @@ const BookingsContent = () => {
                  await logEvent('state_change', {
                     type: 'quick',
                     state: 'reserved_to_active', 
-                    time: differenceInMinutes(nowForLog, bStart)
+                    time: differenceInMinutes(now, bookingStart)
                  });
 
                  showToast("Success", `Group ${newState.toLowerCase()}`, "success");
@@ -320,7 +351,7 @@ const BookingsContent = () => {
                  await logEvent('state_change', {
                     type: 'quick',
                     state: 'reserved_to_active',
-                    time: differenceInMinutes(nowForLog, bStart)
+                    time: differenceInMinutes(now, bookingStart)
                  });
 
                  showToast("Success", `Booking ${newState.toLowerCase()}`, "success");
