@@ -9,7 +9,7 @@ export type BookingCreateDetail = {
 };
 
 export type StateChangeDetail = {
-  type: 'manual' | 'quick' | 'extended' | 'auto';
+  type: 'manual' | 'quick' | 'double_tap' | 'extended' | 'auto';
   state: 'reserved_to_active' | 'active_to_ended';
   time: number; // minutes difference
 };

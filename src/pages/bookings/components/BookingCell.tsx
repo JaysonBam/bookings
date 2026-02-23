@@ -29,7 +29,7 @@ interface BookingCellProps {
   timeSlot: Date;
   onCellClick: (roomId: string, timeSlotIso: string) => void;
   onBookingClick: (bookingId: string) => void;
-  onQuickAction?: (bookingId: string, action: 'activate' | 'end') => void;
+  onQuickAction?: (bookingId: string, action: 'activate' | 'end', source?: 'quick' | 'double_tap') => void;
   onHover?: (isHovering: boolean) => void;
   isCurrentRow?: boolean;
   isHighlighted?: boolean;
@@ -39,6 +39,7 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
   const { currentTime } = useNow();
   const [showQuickAction, setShowQuickAction] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const cellRef = useRef<HTMLTableCellElement>(null);
 
   useEffect(() => {
@@ -46,6 +47,14 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
       cellRef.current.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
     }
   }, [isHighlighted]);
+
+  // Clean up timeouts on unmount
+  useEffect(() => {
+    return () => {
+        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+        if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+    };
+  }, []);
 
   const handleMouseEnter = () => {
     onHover?.(true);
@@ -67,8 +76,31 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
   const handleQuickActionClick = (e: React.MouseEvent, action: 'activate' | 'end') => {
     e.stopPropagation();
     if (!booking || !onQuickAction) return;
-    onQuickAction(booking.id, action);
+    onQuickAction(booking.id, action, 'quick');
     setShowQuickAction(false);
+  };
+
+  const handleCellTap = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!booking) return;
+
+    if (clickTimeoutRef.current) {
+        // Double Tap
+        clearTimeout(clickTimeoutRef.current);
+        clickTimeoutRef.current = null;
+        
+        if (booking.state === 'Reserved') {
+            onQuickAction?.(booking.id, 'activate', 'double_tap');
+        } else if (booking.state === 'Active') {
+            onQuickAction?.(booking.id, 'end', 'double_tap');
+        }
+    } else {
+        // Single Tap
+        clickTimeoutRef.current = setTimeout(() => {
+            clickTimeoutRef.current = null;
+            onBookingClick(booking.id);
+        }, 250);
+    }
   };
 
   if (!booking) {
@@ -138,7 +170,7 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
       textColor={textColor}
       isHighlighted={isHighlighted}
       state={booking.state}
-      onClick={() => onBookingClick(booking.id)}
+      onClick={handleCellTap}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
