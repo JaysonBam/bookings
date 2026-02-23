@@ -162,7 +162,8 @@ const BookingsContent = () => {
         })();
     };
 
-    const handleQuickAction = async (bookingId: string, action: 'activate' | 'end') => {
+    const handleQuickAction = async (bookingId: string, action: 'activate' | 'end', source?: 'quick' | 'double_tap') => {
+        const logType = source === 'double_tap' ? 'double_tap' : 'quick';
         try {
             // Fetch booking with room information
             const { data: booking, error: fetchError } = await supabase
@@ -280,7 +281,7 @@ const BookingsContent = () => {
                             if (error) throw error;
 
                             await logEvent('state_change', {
-                                type: 'quick',
+                                type: logType,
                                 state: 'active_to_ended',
                                 time: differenceInMinutes(now, bookingEnd)
                             });
@@ -297,7 +298,7 @@ const BookingsContent = () => {
                          if (error) throw error;
                          
                          await logEvent('state_change', {
-                             type: 'quick',
+                             type: logType,
                              state: 'active_to_ended',
                              time: differenceInMinutes(now, bookingEnd)
                          });
@@ -316,7 +317,7 @@ const BookingsContent = () => {
                     if (error) throw error;
                     
                     await logEvent('state_change', {
-                        type: 'quick',
+                        type: logType,
                         state: 'active_to_ended',
                         time: differenceInMinutes(now, bookingEnd)
                     });
@@ -335,7 +336,7 @@ const BookingsContent = () => {
                 if (error) throw error;
                  
                  await logEvent('state_change', {
-                    type: 'quick',
+                    type: logType,
                     state: 'reserved_to_active', 
                     time: differenceInMinutes(now, bookingStart)
                  });
@@ -349,7 +350,7 @@ const BookingsContent = () => {
                 if (error) throw error;
 
                  await logEvent('state_change', {
-                    type: 'quick',
+                    type: logType,
                     state: 'reserved_to_active',
                     time: differenceInMinutes(now, bookingStart)
                  });
