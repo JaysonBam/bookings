@@ -3,6 +3,7 @@ import { format, addMinutes } from "date-fns";
 import { supabase } from "../../../lib/supabaseClient";
 import BookingCell from "./BookingCell";
 import { useNow } from "../context/NowContext";
+import { getBookingSoftState } from "../utils/helpers";
 import { CircularProgress, Box, Table, TableBody, TableRow, TableHead } from "@mui/material";
 import { alpha } from '@mui/material/styles';
 import { StyledTableContainer, StyledHeaderCell, StyledCornerCell, StyledTimeCell } from "../styles";
@@ -42,6 +43,7 @@ interface BookingGridProps {
   highlightedBookingId?: string | null;
   refreshTrigger?: number;
   showToast?: (title: string, description: string, severity?: "success" | "error" | "info") => void;
+  onStatusCountsChange?: (late: number, overdue: number) => void;
 }
 
 const defaultRooms: Room[] = [
@@ -60,6 +62,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
   onQuickAction,
   highlightedBookingId,
   refreshTrigger = 0,
+  onStatusCountsChange,
   showToast = () => {},
 }) => {
   const [rooms, setRooms] = useState<Room[]>(roomsProp ?? defaultRooms);
@@ -188,6 +191,21 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
         channel.unsubscribe();
     };
   }, [selectedDate, bookingsProp, fetchBookings]);
+
+  useEffect(() => {
+    if (!onStatusCountsChange) return;
+    
+    let l = 0;
+    let o = 0;
+    if (bookings && currentTime) {
+        bookings.forEach(b => {
+            const s = getBookingSoftState(b, currentTime);
+            if (s === 'late') l++;
+            if (s === 'overdue') o++;
+        });
+    }
+    onStatusCountsChange(l, o);
+  }, [bookings, currentTime, onStatusCountsChange]);
 
   const timeSlots = useMemo(() => {
     const [sh, sm] = openingHours.start.split(":").map(Number);
