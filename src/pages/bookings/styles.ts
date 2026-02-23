@@ -34,12 +34,20 @@ export const StyledTableContainer = styled(TableContainer)(({ theme }) => ({
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: theme.shape.borderRadius,
   '&::-webkit-scrollbar': {
-      width: '8px',
-      height: '8px',
+      width: '12px',
+      height: '32px',
   },
   '&::-webkit-scrollbar-thumb': {
       backgroundColor: theme.palette.action.hover,
-      borderRadius: '4px',
+      backgroundClip: 'content-box',
+  },
+  '&::-webkit-scrollbar-thumb:horizontal': {
+      borderRadius: '16px',
+      border: '4px solid transparent',
+  },
+  '&::-webkit-scrollbar-thumb:vertical': {
+      borderRadius: '6px',
+      border: '2px solid transparent',
   },
 }));
 
