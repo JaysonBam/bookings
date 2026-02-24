@@ -18,6 +18,8 @@ const BookingsContent = () => {
     const { setHeaderContent } = useLayout();
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const [currentUser, setCurrentUser] = useState<string>("");
+    const [statusCounts, setStatusCounts] = useState<{late: number, overdue: number}>({late: 0, overdue: 0});
+    const [initialSearchFilter, setInitialSearchFilter] = useState<'late' | 'overdue' | null>(null);
 
     // Snackbar state
     const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -29,6 +31,18 @@ const BookingsContent = () => {
         setSnackbarSeverity(severity);
         setSnackbarOpen(true);
     };
+
+    const handleStatusCountsChange = useCallback((late: number, overdue: number) => {
+        setStatusCounts(prev => {
+            if (prev.late === late && prev.overdue === overdue) return prev;   
+            return { late, overdue };
+        });
+    }, []);
+
+    const handleFilterClick = useCallback((filter: 'late' | 'overdue') => {
+        setInitialSearchFilter(filter);
+        setIsSearchOpen(true);
+    }, []);
 
     const handleSnackbarClose = (_?: SyntheticEvent | Event, reason?: string) => {
         if (reason === 'clickaway') return;
@@ -369,13 +383,19 @@ const BookingsContent = () => {
                 selectedDate={selectedDate}
                 onDateChange={setSelectedDate}
                 onBookClick={handleBookClick}
-                onSearchClick={() => setIsSearchOpen(prev => !prev)}
+                onSearchClick={() => {
+                    setInitialSearchFilter(null);
+                    setIsSearchOpen(prev => !prev);
+                }}
                 currentUser={currentUser}
                 onUserChange={setCurrentUser}
+                lateCount={statusCounts.late}
+                overdueCount={statusCounts.overdue}
+                onFilterClick={handleFilterClick}
             />
         );
         return () => setHeaderContent(null);
-    }, [selectedDate, currentUser, setHeaderContent, handleBookClick]);
+    }, [selectedDate, currentUser, setHeaderContent, handleBookClick, statusCounts, handleFilterClick]);
 
     return (
         <StyledPageContainer>
@@ -386,6 +406,7 @@ const BookingsContent = () => {
                         onCellClick={handleCellClick}
                         onBookingClick={handleBookingClick}
                         onQuickAction={handleQuickAction}
+                        onStatusCountsChange={handleStatusCountsChange}
                         highlightedBookingId={highlightedBookingId}
                         refreshTrigger={refreshGridTrigger}
                         showToast={showToast}
@@ -393,10 +414,14 @@ const BookingsContent = () => {
                 </StyledGridContainer>
                 <SearchPanel 
                     isOpen={isSearchOpen} 
-                    onClose={() => setIsSearchOpen(false)} 
+                    onClose={() => {
+                        setIsSearchOpen(false);
+                        setInitialSearchFilter(null);
+                    }} 
                     selectedDate={selectedDate}
                     onBookingSelect={handleBookingSelect}
                     showToast={showToast}
+                    initialFilter={initialSearchFilter}
                 />
             </StyledContentContainer>
 
