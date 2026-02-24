@@ -39,7 +39,7 @@ interface BookingGridProps {
   openingHours?: { start: string; end: string };
   onCellClick: (roomId: string, timeSlotIso: string) => void;
   onBookingClick: (bookingId: string) => void;
-  onQuickAction?: (bookingId: string, action: 'activate' | 'end') => void;
+  onQuickAction?: (bookingId: string, action: 'activate' | 'end', source?: 'quick' | 'double_tap') => void;
   onStatusCountsChange?: (late: number, overdue: number) => void;
   highlightedBookingId?: string | null;
   refreshTrigger?: number;
