@@ -2,6 +2,7 @@ import React, { useMemo, useEffect, useState, useRef, useCallback } from "react"
 import { format, addMinutes } from "date-fns";
 import { supabase } from "../../../lib/supabaseClient";
 import BookingCell from "./BookingCell";
+import { getBookingSoftState } from "../utils/helpers";
 import { useNow } from "../context/NowContext";
 import { CircularProgress, Box, Table, TableBody, TableRow, TableHead } from "@mui/material";
 import { alpha } from '@mui/material/styles';
@@ -38,7 +39,8 @@ interface BookingGridProps {
   openingHours?: { start: string; end: string };
   onCellClick: (roomId: string, timeSlotIso: string) => void;
   onBookingClick: (bookingId: string) => void;
-  onQuickAction?: (bookingId: string, action: 'activate' | 'end', source?: 'quick' | 'double_tap') => void;
+  onQuickAction?: (bookingId: string, action: 'activate' | 'end') => void;
+  onStatusCountsChange?: (late: number, overdue: number) => void;
   highlightedBookingId?: string | null;
   refreshTrigger?: number;
   showToast?: (title: string, description: string, severity?: "success" | "error" | "info") => void;
@@ -58,6 +60,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
   onCellClick,
   onBookingClick,
   onQuickAction,
+  onStatusCountsChange,
   highlightedBookingId,
   refreshTrigger = 0,
   showToast = () => {},
@@ -161,6 +164,21 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
       fetchBookings(format(selectedDate, "yyyy-MM-dd"));
     }
   }, [selectedDate, bookingsProp, refreshTrigger, fetchBookings]); 
+
+  useEffect(() => {
+    if (!onStatusCountsChange) return;
+
+    let l = 0;
+    let o = 0;
+    if (bookings && currentTime) {
+        bookings.forEach(b => {
+            const s = getBookingSoftState(b as any, currentTime);
+            if (s === 'late') l++;
+            if (s === 'overdue') o++;
+        });
+    }
+    onStatusCountsChange(l, o);
+  }, [bookings, currentTime, onStatusCountsChange]);
 
   useEffect(() => {
     if (bookingsProp && bookingsProp.length > 0) return;

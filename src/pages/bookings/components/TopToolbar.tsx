@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Button, TextField, Box } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon } from '@mui/icons-material';
+import { Add as AddIcon, Search as SearchIcon, Warning as WarningIcon, Schedule as ScheduleIcon } from '@mui/icons-material';
 import { DateInput } from "../../../components/DateInput";
 
 interface TopToolbarProps {
@@ -11,9 +11,22 @@ interface TopToolbarProps {
   onSearchClick?: () => void;
   currentUser?: string;
   onUserChange?: (name: string) => void;
+    lateCount?: number;
+    overdueCount?: number;
+    onFilterClick?: (filter: 'late' | 'overdue') => void;
 }
 
-export const TopToolbar: React.FC<TopToolbarProps> = ({ selectedDate, onDateChange, onBookClick, onSearchClick, currentUser, onUserChange }) => {
+export const TopToolbar: React.FC<TopToolbarProps> = ({ 
+    selectedDate, 
+    onDateChange, 
+    onBookClick, 
+    onSearchClick, 
+    currentUser, 
+    onUserChange,
+    lateCount = 0,
+    overdueCount = 0,
+    onFilterClick
+}) => {
   const [localUser, setLocalUser] = useState(currentUser || "");
 
   useEffect(() => {
@@ -69,6 +82,45 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ selectedDate, onDateChan
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {(lateCount > 0 || overdueCount > 0) && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>   
+                    {lateCount > 0 && (
+                        <Button
+                            variant="contained"
+                            size="small"
+                            startIcon={<ScheduleIcon />}
+                            onClick={() => onFilterClick?.('late')}
+                            sx={{ 
+                                bgcolor: '#ff9800', // Orange
+                                color: 'white',
+                                '&:hover': { bgcolor: '#f57c00' },
+                                fontWeight: 'bold',
+                                boxShadow: 1
+                            }}
+                        >
+                            Late: {lateCount}
+                        </Button>
+                    )}
+                    {overdueCount > 0 && (
+                        <Button
+                            variant="contained"
+                            size="small"
+                            startIcon={<WarningIcon />}
+                            onClick={() => onFilterClick?.('overdue')}
+                            sx={{ 
+                                bgcolor: '#f44336', // Red
+                                color: 'white',
+                                '&:hover': { bgcolor: '#d32f2f' },
+                                fontWeight: 'bold',
+                                boxShadow: 1
+                            }}
+                        >
+                            Overdue: {overdueCount}
+                        </Button>
+                    )}
+                </Box>
+            )}
+
             {onUserChange && (
                 <TextField
                     size="small"
