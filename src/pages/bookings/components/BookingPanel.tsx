@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import { supabase } from "../../../lib/supabaseClient";
-import { format, parseISO, addMinutes, eachDayOfInterval, isBefore, differenceInMinutes } from "date-fns";
+import { format, parseISO, addMinutes, eachDayOfInterval, isBefore, differenceInMinutes, isSameDay } from "date-fns";
 import timeLib from "../../../lib/time";
 import { useConfirm } from "../context/ConfirmDialogContext";
 import { useNow } from "../context/NowContext";
@@ -918,11 +918,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             .neq('state', 'Ended');
 
          if (autoEndedBookings && autoEndedBookings.length > 0) {
-              const startDt = parseISO(`${startDate}T${startStr}`); // The time the new booking starts (forcing the end)
+              const exactNow = await timeLib.getTime();
               for (const b of autoEndedBookings) {
                   const bEnd = parseISO(`${startDate}T${b.end_time}`);
                   // diff: Time of change (start of new booking causing cut) - Original End Time
-                  const diffMins = differenceInMinutes(startDt, bEnd);
+                  const diffMins = isSameDay(exactNow, bEnd) ? differenceInMinutes(exactNow, bEnd) : 1000;
                   await logEvent('state_change', {
                       type: 'auto',
                       state: 'active_to_ended',
@@ -1026,7 +1026,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              if (updateError) throw updateError;
 
              // Log Old Booking State Change (Extended)
-             const now = new Date();
+             const exactNow = await timeLib.getTime();
              const bEnd = end; // The end time of the old segment (which is 'end' calculated above)
              // "difference between the time of the state change and the end time"
              // State change happens roughly "now". End time is 'end'.
@@ -1043,7 +1043,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              await logEvent('state_change', {
                  type: 'extended',
                  state: 'active_to_ended',
-                 time: differenceInMinutes(now, bEnd)
+                 time: isSameDay(exactNow, bEnd) ? differenceInMinutes(exactNow, bEnd) : 1000
              });
 
              // 2. Create New Booking (Active)
@@ -1081,7 +1081,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
             // Log Manual State Change
             if (state !== prefill.booking.state) {
-                 const now = new Date();
+                 const exactNow = await timeLib.getTime();
                  let timeDiff = 0;
                  let targetState: 'reserved_to_active' | 'active_to_ended' | null = null;
                  
@@ -1089,14 +1089,14 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                  if (prefill.booking.state === 'Reserved' && state === 'Active') {
                      // diff between state change and starting time
                      const bStart = parseISO(`${prefill.booking.booking_day}T${prefill.booking.start_time}`);
-                     timeDiff = differenceInMinutes(now, bStart);
+                     timeDiff = isSameDay(exactNow, bStart) ? differenceInMinutes(exactNow, bStart) : 1000;
                      targetState = 'reserved_to_active';
                  }
                  // Active -> Ended
                  else if (prefill.booking.state === 'Active' && state === 'Ended') {
                      // diff between state change and end time
                      const bEnd = parseISO(`${prefill.booking.booking_day}T${prefill.booking.end_time}`);
-                     timeDiff = differenceInMinutes(now, bEnd);
+                     timeDiff = isSameDay(exactNow, bEnd) ? differenceInMinutes(exactNow, bEnd) : 1000;
                      targetState = 'active_to_ended';
                  }
 
