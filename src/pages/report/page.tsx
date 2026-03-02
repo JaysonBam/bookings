@@ -67,13 +67,41 @@ export default function ReportPage() {
       const endDate = format(endD, "yyyy-MM-dd");
 
       // 1. Fetch Data
-      const { data: bookings, error: bookingsError } = await supabase
-        .from("bookings")
-        .select("*")
-        .gte("booking_day", startDate)
-        .lte("booking_day", endDate);
+      let allBookings: any[] = [];
+      let from = 0;
+      let to = 999;
+      let hasMore = true;
 
-      if (bookingsError) throw bookingsError;
+      while (hasMore) {
+        const { data: bookings, error: bookingsError } = await supabase
+          .from("bookings")
+          .select("*")
+          .gte("booking_day", startDate)
+          .lte("booking_day", endDate)
+          .range(from, to)
+          .order("booking_day", { ascending: true });
+
+        if (bookingsError) throw bookingsError;
+        
+        if (bookings && bookings.length > 0) {
+          allBookings = [...allBookings, ...bookings];
+          if (bookings.length < 1000 || allBookings.length >= 4000) {
+            hasMore = false;
+          } else {
+            from += 1000;
+            to += 1000;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+      const bookings = allBookings;
+
+      if (bookings.length === 0) {
+        showMessage("No bookings found for the selected month.", "error");
+        setLoading(false);
+        return;
+      }
 
       const { data: rooms, error: roomsError } = await supabase
         .from("rooms")
