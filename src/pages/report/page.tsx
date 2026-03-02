@@ -67,13 +67,41 @@ export default function ReportPage() {
       const endDate = format(endD, "yyyy-MM-dd");
 
       // 1. Fetch Data
-      const { data: bookings, error: bookingsError } = await supabase
-        .from("bookings")
-        .select("*")
-        .gte("booking_day", startDate)
-        .lte("booking_day", endDate);
+      let allBookings: any[] = [];
+      let from = 0;
+      let to = 999;
+      let hasMore = true;
 
-      if (bookingsError) throw bookingsError;
+      while (hasMore) {
+        const { data: bookings, error: bookingsError } = await supabase
+          .from("bookings")
+          .select("*")
+          .gte("booking_day", startDate)
+          .lte("booking_day", endDate)
+          .range(from, to)
+          .order("booking_day", { ascending: true });
+
+        if (bookingsError) throw bookingsError;
+        
+        if (bookings && bookings.length > 0) {
+          allBookings = [...allBookings, ...bookings];
+          if (bookings.length < 1000 || allBookings.length >= 4000) {
+            hasMore = false;
+          } else {
+            from += 1000;
+            to += 1000;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+      const bookings = allBookings;
+
+      if (bookings.length === 0) {
+        showMessage("No bookings found for the selected month.", "error");
+        setLoading(false);
+        return;
+      }
 
       const { data: rooms, error: roomsError } = await supabase
         .from("rooms")
@@ -96,6 +124,14 @@ export default function ReportPage() {
         const s = parse(start, "HH:mm:ss", new Date());
         const e = parse(end, "HH:mm:ss", new Date());
         return differenceInMinutes(e, s) / 60;
+      };
+
+      // Helper to sanitize strings for Excel (removes illegal control characters)
+      const sanitizeExcel = (str: string) => {
+        if (!str) return "";
+        // Replace ASCII control characters (00-1F, except tabs 09, newlines 0A, and carriage returns 0D)
+        // This prevents the "Unreadable Content" error in Excel
+        return str.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
       };
 
       // 2. Process Data for Report 1: Raw Booking Data
@@ -163,13 +199,13 @@ export default function ReportPage() {
 
         return {
           Date: bookingDate,
-          Room: roomNames,
-          Course: courseName,
+          Room: sanitizeExcel(roomNames),
+          Course: sanitizeExcel(courseName),
           "Start Time": startTime,
           "End Time": endTime,
           "Duration (Hours)": Number(duration.toFixed(2)),
-          "Booked By": mainBooking.booked_by,
-          "Student Numbers": mainBooking.bulk_booking_id ? "" : mainBooking.student_numbers,
+          "Booked By": sanitizeExcel(mainBooking.booked_by),
+          "Student Numbers": mainBooking.bulk_booking_id ? "" : sanitizeExcel(mainBooking.student_numbers),
           "Student Count": studentCount,
         };
       });
@@ -207,7 +243,7 @@ export default function ReportPage() {
 
       const roomReport = Object.entries(roomStats)
         .map(([room, stats]) => ({
-          Room: room,
+          Room: sanitizeExcel(room),
           "Total Bookings": stats.bookings,
           "Total Hours": Number(stats.hours.toFixed(2)),
         }))
@@ -237,7 +273,7 @@ export default function ReportPage() {
 
       const courseReport = Object.entries(courseStats)
         .map(([course, stats]) => ({
-          Course: course,
+          Course: sanitizeExcel(course),
           "Total Bookings": stats.bookings,
           "Total Hours": Number(stats.hours.toFixed(2)),
         }))
