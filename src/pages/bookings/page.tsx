@@ -7,7 +7,7 @@ import { BookingPanel } from "./components/BookingPanel";
 import { SearchPanel } from "./components/SearchPanel";
 import { useConfirm, ConfirmDialogProvider } from "./context/ConfirmDialogContext";
 import { NowProvider } from "./context/NowContext";
-import { format, parseISO, differenceInMinutes } from "date-fns";
+import { format, parseISO, differenceInMinutes, isSameDay } from "date-fns";
 import { Snackbar, Alert } from "@mui/material";
 import { StyledPageContainer, StyledContentContainer, StyledGridContainer } from "./styles";
 import { useLayout } from "../../components/LayoutContext";
@@ -203,6 +203,8 @@ const BookingsContent = () => {
             const bookingStart = parseISO(`${booking.booking_day}T${booking.start_time}`);
             const bookingEnd = parseISO(`${booking.booking_day}T${booking.end_time}`);
 
+            const exactNow = await timeLib.getTime();
+
             // Show initial confirmation dialog
             if (action === 'activate') {
                 const confirmed = await confirm({
@@ -215,6 +217,7 @@ const BookingsContent = () => {
             } else if (action === 'end') {
                 let warningMessage: string | undefined;
                 
+                // Logic uses the rounded 'now' (original variable from line 186)
                 if (now < bookingEnd) {
                     if (now <= bookingStart) {
                         warningMessage = 'Booking has not started or has not been active long enough and will be permanently deleted.';
@@ -297,7 +300,7 @@ const BookingsContent = () => {
                             await logEvent('state_change', {
                                 type: logType,
                                 state: 'active_to_ended',
-                                time: differenceInMinutes(now, bookingEnd)
+                                time: isSameDay(exactNow, bookingEnd) ? differenceInMinutes(exactNow, bookingEnd) : 1000
                             });
 
                             showToast("Success", `Booking ended early at ${format(now, "HH:mm")}`, "success");
@@ -314,7 +317,7 @@ const BookingsContent = () => {
                          await logEvent('state_change', {
                              type: logType,
                              state: 'active_to_ended',
-                             time: differenceInMinutes(now, bookingEnd)
+                             time: isSameDay(exactNow, bookingEnd) ? differenceInMinutes(exactNow, bookingEnd) : 1000
                          });
                          
                          showToast("Success", "Booking ended", "success");
@@ -333,7 +336,7 @@ const BookingsContent = () => {
                     await logEvent('state_change', {
                         type: logType,
                         state: 'active_to_ended',
-                        time: differenceInMinutes(now, bookingEnd)
+                        time: isSameDay(exactNow, bookingEnd) ? differenceInMinutes(exactNow, bookingEnd) : 1000
                     });
 
                     showToast("Success", `Group ended`, "success");
@@ -352,7 +355,7 @@ const BookingsContent = () => {
                  await logEvent('state_change', {
                     type: logType,
                     state: 'reserved_to_active', 
-                    time: differenceInMinutes(now, bookingStart)
+                    time: isSameDay(exactNow, bookingStart) ? differenceInMinutes(exactNow, bookingStart) : 1000
                  });
 
                  showToast("Success", `Group ${newState.toLowerCase()}`, "success");
@@ -366,9 +369,8 @@ const BookingsContent = () => {
                  await logEvent('state_change', {
                     type: logType,
                     state: 'reserved_to_active',
-                    time: differenceInMinutes(now, bookingStart)
+                    time: isSameDay(exactNow, bookingStart) ? differenceInMinutes(exactNow, bookingStart) : 1000
                  });
-
                  showToast("Success", `Booking ${newState.toLowerCase()}`, "success");
             }
         } catch (err: any) {
