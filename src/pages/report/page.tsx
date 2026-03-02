@@ -126,6 +126,14 @@ export default function ReportPage() {
         return differenceInMinutes(e, s) / 60;
       };
 
+      // Helper to sanitize strings for Excel (removes illegal control characters)
+      const sanitizeExcel = (str: string) => {
+        if (!str) return "";
+        // Replace ASCII control characters (00-1F, except tabs 09, newlines 0A, and carriage returns 0D)
+        // This prevents the "Unreadable Content" error in Excel
+        return str.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+      };
+
       // 2. Process Data for Report 1: Raw Booking Data
       // Group bookings by bulk_booking_id + date + time
       const groupedBookings = new Map<string, any[]>();
@@ -191,13 +199,13 @@ export default function ReportPage() {
 
         return {
           Date: bookingDate,
-          Room: roomNames,
-          Course: courseName,
+          Room: sanitizeExcel(roomNames),
+          Course: sanitizeExcel(courseName),
           "Start Time": startTime,
           "End Time": endTime,
           "Duration (Hours)": Number(duration.toFixed(2)),
-          "Booked By": mainBooking.booked_by,
-          "Student Numbers": mainBooking.bulk_booking_id ? "" : mainBooking.student_numbers,
+          "Booked By": sanitizeExcel(mainBooking.booked_by),
+          "Student Numbers": mainBooking.bulk_booking_id ? "" : sanitizeExcel(mainBooking.student_numbers),
           "Student Count": studentCount,
         };
       });
@@ -235,7 +243,7 @@ export default function ReportPage() {
 
       const roomReport = Object.entries(roomStats)
         .map(([room, stats]) => ({
-          Room: room,
+          Room: sanitizeExcel(room),
           "Total Bookings": stats.bookings,
           "Total Hours": Number(stats.hours.toFixed(2)),
         }))
@@ -265,7 +273,7 @@ export default function ReportPage() {
 
       const courseReport = Object.entries(courseStats)
         .map(([course, stats]) => ({
-          Course: course,
+          Course: sanitizeExcel(course),
           "Total Bookings": stats.bookings,
           "Total Hours": Number(stats.hours.toFixed(2)),
         }))
