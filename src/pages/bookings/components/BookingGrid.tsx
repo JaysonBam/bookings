@@ -30,6 +30,7 @@ interface Booking {
   state?: 'Active' | 'Reserved' | 'Ended' | undefined;
   booking_day?: string;
   bulk_booking_id?: string | null;
+  borrowed_items?: string[];
 }
 
 interface BookingGridProps {
@@ -126,7 +127,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
       try {
         const { data: bookingsData, error: bookingsErr } = await supabase
           .from("bookings")
-          .select(`*, courses(id, name, color_hex)`)
+          .select(`*, courses(id, name, color_hex), borrowed_items`)
           .eq("booking_day", dateStr);
         if (bookingsErr) { showToast("Error", "Failed to load bookings", "error"); setLoading(false); return; }
         if (bookingsData) {
@@ -145,6 +146,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
               state: b.state,
               booking_day: b.booking_day,
               bulk_booking_id: b.bulk_booking_id,
+              borrowed_items: b.borrowed_items ?? [],
             } as Booking;
           });
           setBookings(mapped);
