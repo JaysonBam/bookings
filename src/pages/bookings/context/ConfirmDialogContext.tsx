@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bookings\context\ConfirmDialogContext.tsx.
+ */
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
@@ -15,7 +18,6 @@ interface ConfirmOptions {
     warning?: string;
     confirmText?: string;
     cancelText?: string;
-    // New: Custom actions beyond yes/no
     actions?: ConfirmAction[]; 
 }
 

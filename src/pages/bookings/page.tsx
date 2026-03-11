@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bookings\page.tsx.
+ */
 import { useState, useEffect, useRef, SyntheticEvent, useCallback } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import timeLib from "../../lib/time";
@@ -21,7 +24,6 @@ const BookingsContent = () => {
     const [statusCounts, setStatusCounts] = useState<{late: number, overdue: number}>({late: 0, overdue: 0});
     const [initialSearchFilter, setInitialSearchFilter] = useState<'late' | 'overdue' | null>(null);
 
-    // Snackbar state
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState("");
     const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error" | "info">("info");
@@ -49,15 +51,12 @@ const BookingsContent = () => {
         setSnackbarOpen(false);
     };
 
-    // On mount, if testing clock is enabled in settings, use that time/date as the selectedDate
     useEffect(() => {
         (async () => {
             try {
                 const t = await timeLib.getTime();
                 setSelectedDate(t);
             } catch (e) {
-                // ignore and keep system date
-                // Silent failure is acceptable here as it falls back to system time
             }
         })();
     }, []);
@@ -69,7 +68,6 @@ const BookingsContent = () => {
     const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [creationStartTime, setCreationStartTime] = useState<number | null>(null);
 
-    // Static data caching
     const [rooms, setRooms] = useState<any[]>([]);
     const [courses, setCourses] = useState<any[]>([]);
 
@@ -105,10 +103,8 @@ const BookingsContent = () => {
     };
 
     const handleBookClick = useCallback(async () => {
-        // open panel with current time rounded to nearest 30 minutes (no room selected)
         const now = await timeLib.getTime();
 
-        // Fetch operational hours
         const { data: settings } = await supabase
             .from('settings')
             .select('value')
@@ -129,6 +125,7 @@ const BookingsContent = () => {
 
         const mins = now.getMinutes();
         const rem = mins % 30;
+        // Normalize to the nearest 30-minute slot used by the schedule grid.
         if (rem < 15) now.setMinutes(mins - rem);
         else now.setMinutes(mins + (30 - rem));
         now.setSeconds(0, 0);
@@ -136,7 +133,6 @@ const BookingsContent = () => {
         const nowH = now.getHours();
         const nowM = now.getMinutes();
 
-        // If after close or before open, set to open time
         if ((nowH > closeH) || (nowH === closeH && nowM >= closeM) || (nowH < openH) || (nowH === openH && nowM < openM)) {
             now.setHours(openH);
             now.setMinutes(openM);
@@ -154,14 +150,12 @@ const BookingsContent = () => {
     };
 
     const handleBookingClick = (bookingId: string) => {
-        // fetch booking details and open panel in edit mode
         (async () => {
             try {
                 const { data, error } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
                 if (error) {
                     console.error('Error fetching booking', error);
                     showToast("Error", "Could not load full booking details", "error");
-                    // still open panel with id only as fallback
                     setPanelData({ bookingId });
                 } else {
                     setPanelData({ booking: data });
@@ -179,7 +173,6 @@ const BookingsContent = () => {
     const handleQuickAction = async (bookingId: string, action: 'activate' | 'end', source?: 'quick' | 'double_tap') => {
         const logType = source === 'double_tap' ? 'double_tap' : 'quick';
         try {
-            // Fetch booking with room information
             const { data: booking, error: fetchError } = await supabase
                 .from('bookings')
                 .select('start_time, end_time, booking_day, borrowed_items, bulk_booking_id, room_id, rooms(name)')
@@ -192,7 +185,6 @@ const BookingsContent = () => {
             const startTime = format(parseISO(`${booking.booking_day}T${booking.start_time}`), 'HH:mm');
             const endTime = format(parseISO(`${booking.booking_day}T${booking.end_time}`), 'HH:mm');
 
-            // Calculate current rounded time for warnings
             const now = await timeLib.getTime();
             const m = now.getMinutes();
             const roundedM = Math.round(m / 30) * 30;
@@ -205,7 +197,6 @@ const BookingsContent = () => {
 
             const exactNow = await timeLib.getTime();
 
-            // Show initial confirmation dialog
             if (action === 'activate') {
                 const confirmed = await confirm({
                     title: "Start Booking",
@@ -217,7 +208,6 @@ const BookingsContent = () => {
             } else if (action === 'end') {
                 let warningMessage: string | undefined;
                 
-                // Logic uses the rounded 'now' (original variable from line 186)
                 if (now < bookingEnd) {
                     if (now <= bookingStart) {
                         warningMessage = 'Booking has not started or has not been active long enough and will be permanently deleted.';
@@ -239,6 +229,7 @@ const BookingsContent = () => {
 
             let scope = 'single';
             if (booking.bulk_booking_id) {
+                  // Bulk bookings require explicit scope selection.
                  const result = await confirm({
                      title: action === 'activate' ? "Activate Booking" : "End Booking",
                      description: `This booking is part of a bulk group.`,
@@ -255,11 +246,6 @@ const BookingsContent = () => {
             const newState = action === 'activate' ? 'Active' : 'Ended';
 
             if (action === 'end') {
-                // If it's a group end action, we apply simple state update to End time, or complex logic?
-                // The user requested "delete this booking or delete all booking".
-                // Logic: If ending early, we might encounter complications with distinct start/end times in a group.
-                // Simplification for group: Just set state to Ended. We can't intelligently truncate time for 50 different bookings at once easily without more inputs.
-                // However, for single booking, we keep the truncation logic.
                 
                 if (scope === 'single') {
                     if (booking?.borrowed_items && booking.borrowed_items.length > 0) {
@@ -280,16 +266,14 @@ const BookingsContent = () => {
                         if (!returned) return;
                     }
 
-                    // Truncate logic (using already calculated times)
                     if (now < bookingEnd) {
+                        // End-before-start deletes; mid-session end truncates end_time.
                         if (now <= bookingStart) {
-                             // Delete
                              const { error } = await supabase.from('bookings').delete().eq('id', bookingId);
                              if (error) throw error;
                              showToast("Deleted", "Booking deleted (ended before start time)", "info");
                              return;
                         } else {
-                            // Truncate
                             const newEndTime = format(now, "HH:mm:ss");
                             const { error } = await supabase
                                 .from('bookings')
@@ -307,7 +291,6 @@ const BookingsContent = () => {
                             return;
                         }
                     } else {
-                         // Past End Time
                          const { error } = await supabase
                             .from('bookings')
                             .update({ state: newState })
@@ -324,9 +307,7 @@ const BookingsContent = () => {
                          return;
                     }
                 } else {
-                    // Group End
-                    // We just end them. We don't truncate time because they might be on different days or times.
-                    // Just marking them as 'Ended' stops them from being Active.
+                    // Group end only updates state, not individual timings.
                     const { error } = await supabase
                         .from('bookings')
                         .update({ state: newState })
@@ -344,7 +325,6 @@ const BookingsContent = () => {
                 }
             }
 
-            // ACTIVATE Logic
             if (scope === 'group') {
                 const { error } = await supabase
                     .from('bookings')

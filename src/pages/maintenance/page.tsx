@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\maintenance\page.tsx.
+ */
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import {
@@ -35,7 +38,6 @@ export default function MaintenancePage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Snackbar state
   const [snackbar, setSnackbar] = useState<{open: boolean, message: string, severity: 'success' | 'error'}>({
     open: false,
     message: '',
@@ -93,7 +95,6 @@ export default function MaintenancePage() {
       newLabels = [...currentLabels, fullLabel];
     }
 
-    // Optimistic update
     setRooms(rooms.map((r) => (r.id === roomId ? { ...r, dynamic_labels: newLabels } : r)));
 
     try {
@@ -106,12 +107,10 @@ export default function MaintenancePage() {
     } catch (error) {
       console.error("Error updating room:", error);
       showMessage("Failed to update room", "error");
-      // Revert on error
       setRooms(rooms.map((r) => (r.id === roomId ? { ...r, dynamic_labels: currentLabels } : r)));
     }
   };
 
-  // Stats
   const totalRooms = rooms.length;
   const roomsWithIssues = rooms.filter(r => r.dynamic_labels && r.dynamic_labels.length > 0).length;
   const totalIssues = rooms.reduce((acc, r) => acc + (r.dynamic_labels?.length || 0), 0);
@@ -129,7 +128,6 @@ export default function MaintenancePage() {
     <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: { xs: 8, md: 12 } }}>
       <Container maxWidth="xl" sx={{ px: { xs: 1, md: 3 }, pt: { xs: 2, md: 3 } }}>
         
-        {/* Summary Stats */}
         <Grid container spacing={{ xs: 2, md: 3 }} sx={{ mb: { xs: 2, md: 4 } }}>
             <Grid item xs={12} md={4}>
                 <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

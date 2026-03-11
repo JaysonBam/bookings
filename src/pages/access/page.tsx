@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\access\page.tsx.
+ */
 import { 
   Box, 
   Typography, 
@@ -56,7 +59,6 @@ export default function AccessPage() {
   const [addError, setAddError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
 
-  // Snackbar state
   const [snackbar, setSnackbar] = useState<{open: boolean, message: string, severity: 'success' | 'error' | 'info'}>({
     open: false,
     message: '',
@@ -92,7 +94,6 @@ export default function AccessPage() {
 
   const handleToggle = async (email: string, field: 'settings' | 'authorisation' | 'analytics', currentValue: boolean) => {
     try {
-      // Optimistic update
       setProfiles(prev => prev.map(p => 
         p.email === email ? { ...p, [field]: !currentValue } : p
       ))
@@ -106,7 +107,6 @@ export default function AccessPage() {
     } catch (error) {
       console.error('Error updating permission:', error)
       showToast('Failed to update permission', 'error')
-      // Revert on error
       fetchProfiles()
     }
   }

@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for components\LayoutContext.tsx.
+ */
 import React, { createContext, useContext, useState } from 'react'
 
 type LayoutContextType = {

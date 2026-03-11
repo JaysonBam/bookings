@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\settings\page.tsx.
+ */
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import {
@@ -61,10 +64,8 @@ export default function SettingsPage() {
   const [deletedRoomIds, setDeletedRoomIds] = useState<number[]>([]);
   const [deletedCourseIds, setDeletedCourseIds] = useState<number[]>([]);
   
-  // Raw input map for array-like fields
   const [borrowableInputs, setBorrowableInputs] = useState<Record<number, string>>({});
 
-  // Settings state
   const [opStart, setOpStart] = useState("08:00");
   const [opEnd, setOpEnd] = useState("17:00");
   const [satEnabled, setSatEnabled] = useState(false);
@@ -132,7 +133,6 @@ export default function SettingsPage() {
       if (v.end) setOpEnd(v.end);
     }
 
-    // Saturday hours
     const { data: satData } = await supabase.from("settings").select("value").eq("key", "saturday_hours").single();
     if (satData?.value) {
       const v = satData.value as any;
@@ -258,7 +258,6 @@ export default function SettingsPage() {
       const hoursPayload = { start: opStart, end: opEnd };
       await supabase.from("settings").upsert({ key: "operation_hours", value: hoursPayload });
 
-      // Save Saturday hours
       const satPayload = { enabled: satEnabled, start: satStart, end: satEnd };
       await supabase.from("settings").upsert({ key: "saturday_hours", value: satPayload });
 
@@ -279,7 +278,6 @@ export default function SettingsPage() {
   return (
     <Box sx={{ bgcolor: "background.default", minHeight: "100%", pb: { xs: 8, md: 12 } }}>
       <Container maxWidth="xl" sx={{ px: { xs: 1, md: 3 }, pt: { xs: 2, md: 3 } }}>
-        {/* Sticky Utility Bar */}
         <Paper 
           sx={{ 
             p: { xs: 1.5, md: 2 }, 
@@ -311,7 +309,6 @@ export default function SettingsPage() {
         </Paper>
 
         <Grid container spacing={3}>
-          {/* General Settings */}
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 3, height: '100%' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
@@ -417,7 +414,6 @@ export default function SettingsPage() {
             </Paper>
           </Grid>
 
-          {/* Rooms Management */}
           <Grid item xs={12}>
              <Paper sx={{ width: '100%', overflow: 'hidden' }}>
                 <Box sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -509,7 +505,6 @@ export default function SettingsPage() {
              </Paper>
           </Grid>
 
-          {/* Courses Management */}
           <Grid item xs={12} md={6}>
             <Paper sx={{ width: '100%', overflow: 'hidden', height: '100%' }}>
                 <Box sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center' }}>

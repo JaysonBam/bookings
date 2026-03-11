@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bookings\components\BookingGrid.tsx.
+ */
 import React, { useMemo, useEffect, useState, useRef, useCallback } from "react";
 import { format, addMinutes } from "date-fns";
 import { supabase } from "../../../lib/supabaseClient";
@@ -201,7 +204,6 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
         }
       )
       .subscribe(() => {
-        // status subscription logic
       });
 
     return () => {
@@ -282,7 +284,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
                             width: 18,
                             height: 18,
                             borderRadius: '50%',
-                            background: '#b0b3b8', // Neutral grey, visible on both themes
+                            background: '#b0b3b8',
                             zIndex: 0,
                           }} />
                           <span style={{ position: 'relative', zIndex: 1, color: '#222' }}>{l.split(' ').pop()}</span>

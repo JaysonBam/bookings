@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bug\page.tsx.
+ */
 import { useState, useEffect, FormEvent } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import {
@@ -45,12 +48,10 @@ export default function BugPage() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>("not_fixed");
   
-  // Form state
   const [description, setDescription] = useState("");
   const [reporterName, setReporterName] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Snackbar state
   const [snackbar, setSnackbar] = useState<{open: boolean, message: string, severity: 'success' | 'error'}>({
     open: false,
     message: '',

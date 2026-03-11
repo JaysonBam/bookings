@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for lib\log.ts.
+ */
 import { supabase } from "./supabaseClient";
 
 export type BookingCreateDetail = {

@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bookings\components\BookingCell.tsx.
+ */
 import React, { useState, useRef, useEffect } from "react";
 import { parseISO } from "date-fns";
 import { Button, Box, Typography } from "@mui/material";
@@ -49,7 +52,6 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
     }
   }, [isHighlighted]);
 
-  // Clean up timeouts on unmount
   useEffect(() => {
     return () => {
         if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
@@ -86,7 +88,6 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
     if (!booking) return;
 
     if (clickTimeoutRef.current) {
-        // Double Tap
         clearTimeout(clickTimeoutRef.current);
         clickTimeoutRef.current = null;
         
@@ -96,7 +97,6 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
             onQuickAction?.(booking.id, 'end', 'double_tap');
         }
     } else {
-        // Single Tap
         clickTimeoutRef.current = setTimeout(() => {
             clickTimeoutRef.current = null;
             onBookingClick(booking.id);
@@ -121,7 +121,6 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
     );
   }
 
-  // Determine if this timeSlot is the start of the booking
   const start = parseISO(booking.start_time);
   const isStart = start.getHours() === timeSlot.getHours() && start.getMinutes() === timeSlot.getMinutes();
   if (!isStart) return null;
@@ -130,10 +129,8 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
   const durationMinutes = Math.max(30, Math.round((end.getTime() - start.getTime()) / 60000));
   const rowSpan = Math.max(1, Math.floor(durationMinutes / 30));
 
-  // Determine background color from course color, or fallback to blue-gray
   const bgColor = booking.course?.color_hex ?? booking.color ?? "#64748b"; // slate-500 fallback
 
-  // Decide text color based on background luminance for readability
   const getTextColor = (hex: string) => {
     try {
       const h = hex.replace('#','');
@@ -181,7 +178,6 @@ export const BookingCell: React.FC<BookingCellProps> = ({ booking, roomId, timeS
           borderRadius: '50%', backgroundColor: getStatusDotColor(booking.state),
           boxShadow: 1
         }} />
-        {/* Tools icon if borrowed items exist */}
         {booking.borrowed_items && booking.borrowed_items.length > 0 && (
           <Box sx={{ position: 'absolute', bottom: 4, right: 4, zIndex: 3, color: textColor }}>
             <BuildIcon fontSize="medium" sx={{ fontSize: 22 }} titleAccess="Items borrowed" />

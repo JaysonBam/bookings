@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\terms-of-service\page.tsx.
+ */
 import { Container, Typography, Box, Link, Divider, Paper } from '@mui/material';
 
 const TermsOfServicePage = () => {

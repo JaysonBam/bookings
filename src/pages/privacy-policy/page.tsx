@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\privacy-policy\page.tsx.
+ */
 import { Container, Typography, Box, Link, Divider, Paper } from '@mui/material';
 
 const PrivacyPolicyPage = () => {
