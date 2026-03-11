@@ -69,7 +69,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             return String(mins)
           } catch(e) {}
       }
-      return "30"
+      return ""
   });
 
   const [staffName, setStaffName] = useState<string>(() => {
@@ -298,15 +298,17 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const currentDur = parseInt(duration);
     if (availableDurationOptions.length > 0) {
         if (!duration || Number.isNaN(currentDur)) {
-             setDuration(String(availableDurationOptions[0]));
-             return;
+            if (prefill?.booking) {
+                setDuration(String(availableDurationOptions[0]));
+            }
+            return;
         }
         const max = availableDurationOptions[availableDurationOptions.length - 1];
         if (currentDur > max) setDuration(String(max));
     } else {
         if (duration !== "") setDuration("");
     }
-  }, [availableDurationOptions, duration]);
+  }, [availableDurationOptions, duration, prefill?.booking]);
 
   useEffect(() => {
     const r = rooms.find((x) => String(x.id) === String(roomId));
@@ -1445,8 +1447,38 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                 <TextField type="time" fullWidth label="Start Time" value={startClock} onChange={e => setStartClock(e.target.value)} error={!!errors.startClock} InputLabelProps={{ shrink: true }} inputProps={{ step: 1800 }} />
                             </Grid>
                             <Grid item xs={6}>
-                                <TextField select fullWidth label="Duration" value={duration} onChange={e => setDuration(e.target.value)} error={!!errors.duration}>
-                                    {availableDurationOptions.map(d => <MenuItem key={d} value={String(d)}>{d} mins</MenuItem>)}
+                                <TextField
+                                    select
+                                    fullWidth
+                                    label="Duration"
+                                    value={duration}
+                                    onChange={e => setDuration(e.target.value)}
+                                    error={!!errors.duration}
+                                    SelectProps={{
+                                        renderValue: (val: unknown) => {
+                                            if (!val) return '';
+                                            const d = Number(val);
+                                            return isNaN(d) ? '' : `${d} mins`;
+                                        }
+                                    }}
+                                >
+                                    {availableDurationOptions.map(d => {
+                                        const endTime = startClock
+                                            ? format(addMinutes(parseISO(`2000-01-01T${startClock}`), d), "HH:mm")
+                                            : null;
+                                        return (
+                                            <MenuItem key={d} value={String(d)}>
+                                                <Box display="flex" justifyContent="space-between" width="100%">
+                                                    <span>{d} mins</span>
+                                                    {endTime && (
+                                                        <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
+                                                            until {endTime}
+                                                        </Typography>
+                                                    )}
+                                                </Box>
+                                            </MenuItem>
+                                        );
+                                    })}
                                 </TextField>
                             </Grid>
                              <Grid item xs={6}>
