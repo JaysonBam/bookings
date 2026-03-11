@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for components\DateInput.tsx.
+ */
 import React, { useState } from 'react';
 import { TextField, TextFieldProps } from '@mui/material';
 import { format, parseISO, isValid } from 'date-fns';

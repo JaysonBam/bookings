@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for context\ThemeContext.tsx.
+ */
 import { createContext, useContext, useMemo, useState, useEffect, ReactNode } from 'react'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { CssBaseline, useMediaQuery } from '@mui/material'
@@ -16,15 +19,13 @@ const ColorModeContext = createContext<ColorModeContextType>({
 
 export const useColorMode = () => useContext(ColorModeContext)
 
-// Modern clean palette definition
 const getDesignTokens = (mode: ColorMode) => ({
   palette: {
     mode,
     ...(mode === 'light'
       ? {
-          // Light Mode
           primary: {
-            main: '#0f172a', // Slate 900 - Dark, professional, clean
+            main: '#0f172a',
           },
           secondary: {
             main: '#64748b', // Slate 500
@@ -40,9 +41,8 @@ const getDesignTokens = (mode: ColorMode) => ({
           divider: '#e2e8f0',
         }
       : {
-          // Dark Mode
           primary: {
-            main: '#f8fafc', // Slate 50 - Whiteish for primary actions on dark
+            main: '#f8fafc',
           },
           secondary: {
             main: '#94a3b8', // Slate 400
@@ -149,13 +149,11 @@ export function CustomThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<ColorMode>('light')
 
   useEffect(() => {
-    // 1. Check local storage
     const savedMode = localStorage.getItem('booking-theme-mode') as ColorMode | null
     
     if (savedMode) {
       setMode(savedMode)
     } else {
-      // 2. Fallback to system preference
       setMode(prefersDarkMode ? 'dark' : 'light')
     }
   }, [prefersDarkMode])

@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bookings\components\TopToolbar.tsx.
+ */
 import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Button, TextField, Box } from '@mui/material';
@@ -36,7 +39,6 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   const handleToday = () => onDateChange(new Date());
 
   const handleDateChange = (val: string) => {
-      // Input is yyyy-MM-dd
       if (val) {
           const [y, m, d] = val.split('-').map(Number);
           onDateChange(new Date(y, m - 1, d));

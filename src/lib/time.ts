@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for lib\time.ts.
+ */
 import { supabase } from "./supabaseClient";
 
 export type TestingClock = {

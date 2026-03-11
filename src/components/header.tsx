@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for components\header.tsx.
+ */
 import { AppBar, Toolbar, IconButton, Typography } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import { useTheme } from '@mui/material/styles'

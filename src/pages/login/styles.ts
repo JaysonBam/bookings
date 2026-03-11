@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\login\styles.ts.
+ */
 import loginBg from '../../assets/login-bg.svg'
 
 export const styles = (theme: any) => ({

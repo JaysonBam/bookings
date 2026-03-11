@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bookings\styles.ts.
+ */
 import { styled } from '@mui/material/styles';
 import { TableCell, TableContainer, Box, Paper, Toolbar } from '@mui/material';
 
@@ -28,7 +31,7 @@ export const StyledGridContainer = styled(Box)(({ theme }) => ({
 }));
 
 export const StyledTableContainer = styled(TableContainer)(({ theme }) => ({
-  flex: 1, // Fill available vertical space in the flex parent
+  flex: 1,
   minHeight: 0, // Ensure it shrinks
   overflow: 'auto',
   border: `1px solid ${theme.palette.divider}`,
@@ -67,7 +70,7 @@ export const StyledTimeCell = styled(TableCell)(({ theme }) => ({
   position: 'sticky',
   left: 0,
   backgroundColor: theme.palette.background.paper,
-  zIndex: 11, // Higher than header? No, header is 10. Time column 11. Corner (0,0) needs 12.
+  zIndex: 11,
   borderRight: `1px solid ${theme.palette.divider}`,
   fontWeight: 'bold',
   textAlign: 'center',
@@ -107,7 +110,6 @@ export const StyledBookingCell = styled(TableCell, {
       border: `2px solid ${theme.palette.primary.main}`,
       zIndex: 5,
   }),
-  // Handling state visual cues if needed
   ...(state === 'Reserved' && {
       opacity: 0.7,
   }),
@@ -135,7 +137,7 @@ export const StyledSearchPanel = styled(Paper, {
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
-    whiteSpace: 'nowrap', // Prevent content wrapping when closing
+    whiteSpace: 'nowrap',
 }));
 
 export const StyledBookingPanelContents = styled(Box)(({ theme }) => ({
