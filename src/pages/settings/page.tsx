@@ -395,6 +395,19 @@ export default function SettingsPage() {
                     disabled={!testingEnabled}
                     fullWidth
                     size="small"
+                    sx={{
+                      '& input[type="date"]': {
+                        colorScheme: (theme) => theme.palette.mode,
+                      },
+                      '& input[type="date"]::-webkit-calendar-picker-indicator': {
+                        cursor: 'pointer',
+                        opacity: 1,
+                        filter: (theme) =>
+                          theme.palette.mode === 'dark'
+                            ? 'invert(1) grayscale(1) brightness(2)'
+                            : 'invert(0) brightness(0.4)',
+                      },
+                    }}
                     />
                     <TextField
                     label="Test Time"
