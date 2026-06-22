@@ -1,22 +1,24 @@
-/**
- * Purpose: Module logic for pages\privacy-policy\page.tsx.
- */
-import { Container, Typography, Box, Link, Divider, Paper } from '@mui/material';
+import { Container, Typography, Box, Link, Divider, Paper, Stack } from '@mui/material';
 
 const PrivacyPolicyPage = () => {
     return (
-        <Container maxWidth="md" sx={{ py: 8 }}>
-            <Paper elevation={3} sx={{ p: { xs: 3, md: 5 } }}>
+        <Container maxWidth="md" sx={{ py: { xs: 4, md: 8 } }}>
+            <Paper elevation={0} variant="outlined" sx={{ p: { xs: 3, md: 5 } }}>
                 <Typography variant="h3" component="h1" gutterBottom>
                     Privacy Policy
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-                    Last Updated: January 28, 2026
+                    Last Updated: June 22, 2026
                 </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 2 }}>
+                    <Link href="/about">App Overview</Link>
+                    <Link href="/terms">Terms of Service</Link>
+                    <Link href="/login">Staff Sign In</Link>
+                </Stack>
                 
                 <Box sx={{ my: 4 }}>
                     <Typography variant="body1" paragraph>
-                        This Privacy Policy describes how the University of Pretoria Booking System ("we", "us", or "our") collects, uses, and discloses your information when you use our booking services.
+                        This Privacy Policy describes how MISC Bookings, an internal University of Pretoria departmental study room booking application, collects and uses information. The app is for authorized departmental staff only. Students do not log into this app.
                     </Typography>
                 </Box>
 
@@ -24,20 +26,30 @@ const PrivacyPolicyPage = () => {
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Data Collection
+                        Information We Collect
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        We collect the following types of information:
+                        We collect only the information needed to authenticate staff users, authorize access, manage room bookings, and support internal administration:
                     </Typography>
                     <ul>
                         <li>
                             <Typography variant="body1">
-                                <strong>Information you provide:</strong> We collect information you enter into the system, including booking details, settings, student numbers, and modifications to rooms and courses.
+                                <strong>Google sign-in data:</strong> email address, Google account user ID, display name, and profile image URL supplied through Google sign-in and Supabase Auth.
                             </Typography>
                         </li>
                         <li>
                             <Typography variant="body1">
-                                <strong>Automated Information:</strong> We may collect standard server logs and usage data to ensure system stability.
+                                <strong>Staff profile and access data:</strong> staff email, name, profile image URL, profile status, and access-control flags for settings, analytics, and user authorization.
+                            </Typography>
+                        </li>
+                        <li>
+                            <Typography variant="body1">
+                                <strong>Booking data:</strong> room, course, booking date, start and end times, booking state, staff name entered on the booking, borrowed items, bulk booking identifiers, student numbers or student counts, and related room/course configuration.
+                            </Typography>
+                        </li>
+                        <li>
+                            <Typography variant="body1">
+                                <strong>Operational data:</strong> room names, capacity limits, availability labels, borrowable items, courses, application settings, optional bug reports, reporter names, and limited audit/usage logs for booking creation and state changes.
                             </Typography>
                         </li>
                     </ul>
@@ -45,55 +57,64 @@ const PrivacyPolicyPage = () => {
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Purpose of Use
+                        How We Use Information
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        The data collected is used primarily to facilitate the logic and functionality of the booking system. This includes managing schedules, preventing double bookings, and maintaining user preferences. We do not use your data for personalized advertising.
+                        We use this information to confirm that a staff user is authorized, manage room schedules, prevent double bookings, track room availability, produce internal booking reports, maintain user permissions, troubleshoot issues, and operate the booking system. We do not use this information for advertising, profiling, or external tracking.
                     </Typography>
                 </Box>
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Third-Party Sharing
+                        Google Sign-In
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        We do not share personal information such as names, surnames, email addresses, or profile pictures with third parties.
+                        Google is used only for sign-in and identity verification. The app requests basic identity scopes only: <code>openid</code>, <code>email</code>, and <code>profile</code>.
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        <strong>Internal Usage:</strong> Booking information may be extrapolated for University of Pretoria administration control and analysis. This data is aggregated and does not contain personal user details.
-                    </Typography>
-                    <Typography variant="body1" paragraph>
-                        <strong>Service Providers:</strong> We use third-party services (like Google) to authenticate users. When you log in with Google, we access basic profile information as permitted by your settings, but this is only used for identification within the app and not shared externally.
+                        The app does not access, read, store, or process Gmail, Google Drive, Google Calendar, Google Contacts, or other Google API content.
                     </Typography>
                 </Box>
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Use of Technologies
+                        Storage and Access
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        We use local storage and cookies to save your user preferences, specifically your preferred theme (light or dark mode). We do not use cookies for tracking or advertising purposes.
+                        Application data is stored in Supabase and protected by authentication and row-level security rules. Authorized staff can access booking information needed to operate the study room booking service. Staff with additional authorization roles may manage users, settings, and reports.
+                    </Typography>
+                    <Typography variant="body1" paragraph>
+                        The app stores a local browser preference for light or dark mode. Supabase Auth may use browser storage and cookies as needed to maintain the staff sign-in session. These technologies are not used for advertising.
                     </Typography>
                 </Box>
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        User Controls and Opt-out
+                        Retention and Deletion
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        The information stored is not linked to your specific Google user profile for advertising or external tracking. You can control the data you provide by limiting the information you interact with in the system.
+                        Staff profile records are retained while the staff member is authorized to use the app and may be removed by an authorized administrator when access is no longer required. Booking, reporting, and audit records are retained for internal operational and administrative needs according to university or departmental retention requirements.
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        To manage your Google privacy settings, please visit the <Link href="https://myaccount.google.com/privacy-checkup" target="_blank" rel="noopener">Google Privacy Checkup</Link>.
+                        To request correction or deletion of personal information, contact the departmental app administrator or the support contact listed on the Google OAuth consent screen. Requests may be subject to university records, audit, and operational retention requirements.
                     </Typography>
                 </Box>
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Google Privacy Policy
+                        Sharing
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        Our application integrates with Google services. For more information on how Google handles your data, please review the <Link href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</Link>.
+                        Information is used for internal University of Pretoria departmental administration and support. We do not sell personal information. We use service providers such as Supabase for authentication/session management and database hosting, and Google for sign-in. Google user data from sign-in is used only for identity and access control within this app.
+                    </Typography>
+                </Box>
+
+                <Box>
+                    <Typography variant="h5" component="h2" gutterBottom>
+                        Contact and Google Policies
+                    </Typography>
+                    <Typography variant="body1" paragraph>
+                        For privacy questions, access requests, or deletion requests, contact the departmental app administrator or the university privacy/data-protection office through the support email configured for this app. For more information about how Google handles information, review the <Link href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</Link>.
                     </Typography>
                 </Box>
             </Paper>

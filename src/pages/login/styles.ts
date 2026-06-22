@@ -36,6 +36,17 @@ export const styles = (theme: any) => ({
   titleBox: { width: '100%' },
   title: { mb: 0.5 },
   subtitle: { mb: 2 },
+  disclosure: {
+    mb: 2,
+    mx: 'auto',
+    maxWidth: 360,
+    lineHeight: 1.55,
+  },
+  legalLinks: {
+    display: 'block',
+    mt: 2,
+    lineHeight: 1.6,
+  },
   googleBtn: {
     py: 1.5,
     textTransform: 'none',
