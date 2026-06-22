@@ -1,11 +1,11 @@
-import { Box, Button, Container, Paper, Typography, Stack, Alert } from '@mui/material';
+import { Box, Button, Container, Paper, Typography, Stack, Alert, Link } from '@mui/material';
 import GoogleColorIcon from './components/GoogleIcon'
 import { useTheme } from '@mui/material/styles'
 import { styles as makeStyles } from './styles'
 import logo from '../../assets/logo.svg'
 import { supabase } from '../../lib/supabaseClient'
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useNavigate } from 'react-router-dom'
 
 export default function LoginPage() {
   const theme = useTheme()
@@ -121,6 +121,7 @@ export default function LoginPage() {
                     provider: 'google',
                     options: {
                       redirectTo: `${window.location.origin}/login`,
+                      scopes: 'openid email profile',
                     },
                   })
                 } catch (err) {
@@ -135,6 +136,12 @@ export default function LoginPage() {
             >
               {loading ? 'Signing in…' : 'Sign in with Google'}
             </Button>
+            <Typography variant="caption" color="text.secondary" sx={styles.legalLinks}>
+              For authorized departmental staff only. By signing in, you confirm you are authorized to use this internal departmental app. Review the{' '}
+              <Link component={RouterLink} to="/about">app overview</Link>,{' '}
+              <Link component={RouterLink} to="/privacy">privacy policy</Link>, and{' '}
+              <Link component={RouterLink} to="/terms">terms</Link>.
+            </Typography>
           </Stack>
         </Paper>
       </Container>

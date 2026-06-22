@@ -1,19 +1,24 @@
-import { Container, Typography, Box, Link, Divider, Paper } from '@mui/material';
+import { Container, Typography, Box, Link, Divider, Paper, Stack } from '@mui/material';
 
 const TermsOfServicePage = () => {
     return (
-        <Container maxWidth="md" sx={{ py: 8 }}>
-            <Paper elevation={3} sx={{ p: { xs: 3, md: 5 } }}>
+        <Container maxWidth="md" sx={{ py: { xs: 4, md: 8 } }}>
+            <Paper elevation={0} variant="outlined" sx={{ p: { xs: 3, md: 5 } }}>
                 <Typography variant="h3" component="h1" gutterBottom>
                     Terms of Service
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-                    Last Updated: January 28, 2026
+                    Last Updated: June 22, 2026
                 </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 2 }}>
+                    <Link href="/about">App Overview</Link>
+                    <Link href="/privacy">Privacy Policy</Link>
+                    <Link href="/login">Staff Sign In</Link>
+                </Stack>
 
                 <Box sx={{ my: 4 }}>
                     <Typography variant="body1" paragraph>
-                        By accessing or using the University of Pretoria Booking System, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our services.
+                        These Terms of Service apply to MISC Bookings, an internal University of Pretoria departmental application for managing Mining Industry Study Centre room bookings. By using the app, you confirm that you are an authorized departmental staff user and agree to use it only for approved internal purposes.
                     </Typography>
                 </Box>
 
@@ -21,67 +26,64 @@ const TermsOfServicePage = () => {
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Intellectual Property
+                        Authorized Internal Use
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        The Booking System application is owned by the University of Pretoria. All content, features, and functionality are the exclusive property of the University of Pretoria and its licensors.
+                        This app is provided for authorized staff who manage study room bookings, room settings, access permissions, internal reports, and related operational records. Students do not log into this app. You must not access or use the app unless you have been approved by the department.
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        <strong>User Content:</strong> You retain ownership of any data or content you submit to the system. However, by using the service, you grant us the right to use, store, and modify that content as necessary to provide the service.
+                        You may use information in the app only for legitimate university or departmental administration, support, reporting, and room management purposes.
                     </Typography>
                 </Box>
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Branding and Restrictions
+                        User Responsibilities
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        Using our service does not grant you ownership of any intellectual property rights in our services or the content you access.
+                        You are responsible for keeping your Google account secure, signing out on shared devices, entering accurate booking information, and handling staff and student-related booking data appropriately. Do not enter unnecessary sensitive information into booking notes, bug reports, room labels, or other free-text fields.
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        <strong>Google Branding:</strong> You may not use Google's branding, logos, or legal notices without prior written permission. You must not remove, obscure, or alter any legal notices displayed in or along with Google services. Please refer to <Link href="https://www.google.com/permissions/" target="_blank" rel="noopener">Google Brand Permissions</Link> for guidance.
-                    </Typography>
-                    <Typography variant="body1" paragraph>
-                        University of Pretoria logos are included for branding purposes only and do not convey any specific additional rights or licenses to the user.
+                        You must not share access, attempt to bypass authorization controls, export information for unauthorized purposes, or use the app in a way that conflicts with university policies or applicable law.
                     </Typography>
                 </Box>
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Compliance with Laws
+                        Google Sign-In
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        You agree to comply with all applicable local, national, and international laws and regulations while using our service. You must also adhere to our internal policies and any applicable service-specific terms from Google.
+                        The app uses Google only for staff sign-in and identity verification. It requests basic identity scopes only: <code>openid</code>, <code>email</code>, and <code>profile</code>. The app does not access Gmail, Google Drive, Google Calendar, Google Contacts, or other Google API content.
+                    </Typography>
+                    <Typography variant="body1" paragraph>
+                        Your use of Google sign-in is also subject to the <Link href="https://policies.google.com/terms" target="_blank" rel="noopener">Google Terms of Service</Link>.
                     </Typography>
                 </Box>
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Disclaimers and Limitation of Liability
+                        Data and Records
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        The service is provided on an "AS IS" and "AS AVAILABLE" basis. We make no warranties, expressed or implied, regarding the reliability, accuracy, or availability of the service.
-                    </Typography>
-                    <Typography variant="body1" paragraph>
-                        To the fullest extent permitted by law, the University of Pretoria shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including without limitation, loss of profits, data, use, goodwill, or other intangible losses.
+                        Booking, profile, access-control, reporting, bug report, and operational records may be stored and used for internal administration, support, audit, and reporting. See the <Link href="/privacy">Privacy Policy</Link> for more detail.
                     </Typography>
                 </Box>
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Governing Law
+                        Availability and Support
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        These Terms shall be governed and construed in accordance with the laws of South Africa, without regard to its conflict of law provisions.
+                        The app is provided for internal operational use and may be changed, suspended, or restricted as needed by the department or university. For access, support, privacy, or deletion requests, contact the departmental app administrator or the support contact configured on the Google OAuth consent screen.
                     </Typography>
                 </Box>
 
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h5" component="h2" gutterBottom>
-                        Google Terms of Service
+                        Compliance
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        Our application integrates with Google services. Your use of those services is also governed by the <Link href="https://policies.google.com/terms" target="_blank" rel="noopener">Google Terms of Service</Link>.
+                        You must comply with applicable university policies, departmental instructions, and applicable South African law when using the app.
                     </Typography>
                 </Box>
             </Paper>

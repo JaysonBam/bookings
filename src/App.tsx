@@ -4,13 +4,16 @@ import { useEffect, useState } from 'react'
 import { CustomThemeProvider } from './context/ThemeContext'
 
 import LoginPage from './pages/login/page'
+import AboutPage from './pages/about/page'
 import BookingsPage from './pages/bookings/page'
 import AccessPage from './pages/access/page'
 import BugPage from './pages/bug/page'
 import DocumentPage from './pages/document/page'
 import MaintenancePage from './pages/maintenance/page'
+import PrivacyPolicyPage from './pages/privacy-policy/page'
 import ReportPage from './pages/report/page'
 import SettingsPage from './pages/settings/page'
+import TermsOfServicePage from './pages/terms-of-service/page'
 
 import Sidebar from './components/Sidebar'
 import Header from './components/header'
@@ -134,6 +137,11 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms" element={<TermsOfServicePage />} />
+          <Route path="/privacy-policy" element={<Navigate to="/privacy" replace />} />
+          <Route path="/terms-of-service" element={<Navigate to="/terms" replace />} />
 
           <Route path="/bookings" element={<Layout><BookingsPage /></Layout>} />
           <Route path="/access" element={<Layout requiredPermission="authorisation"><AccessPage /></Layout>} />
