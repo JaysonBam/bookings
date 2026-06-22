@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for components\Sidebar.tsx.
+ */
 import {
   Box,
   Toolbar,
@@ -79,9 +82,6 @@ export default function Sidebar({
 
   const filteredItems = menuItems.filter((item) => {
     if (item.protected) {
-      // If currentUser is not yet loaded, hide protected items or show them?
-      // Requirement: "if they don't have access to it... take away on the side panel"
-      // So default to hidden if user not loaded or permission is false
       return currentUser?.[item.protected as keyof User] === true
     }
     return true

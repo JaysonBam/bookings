@@ -33,7 +33,6 @@ export default function LoginPage() {
 
         if (!email) throw new Error('No email found')
 
-        // Check if user exists in profiles
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('*')
@@ -47,7 +46,6 @@ export default function LoginPage() {
             return
         }
 
-        // Handle profile updates based on status
         const updates = {
             full_name: user.user_metadata.full_name || user.user_metadata.name,
             profile_url: user.user_metadata.avatar_url || user.user_metadata.picture,
@@ -60,8 +58,6 @@ export default function LoginPage() {
                 status: 'active'
             }).eq('email', email)
         } else {
-            // Check if updates are needed to avoid unnecessary writes? 
-            // The prompt says "just update it to make sure that we are using the newest name"
             await supabase.from('profiles').update(updates).eq('email', email)
         }
 

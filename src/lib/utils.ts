@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for lib\utils.ts.
+ */
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -8,7 +11,6 @@ export function cn(...inputs: ClassValue[]) {
 export function getBookingSoftState(booking: any, now: Date): 'late' | 'overdue' | null {
   if (!booking) return null;
   
-  // Late: Reserved and now > start + 10 mins
   if (booking.state === 'Reserved') {
     let startT = new Date(booking.start_time);
     if (booking.booking_day && booking.start_time) {
@@ -21,7 +23,6 @@ export function getBookingSoftState(booking: any, now: Date): 'late' | 'overdue'
     }
   }
   
-  // Overdue: Active and now > end
   if (booking.state === 'Active') {
     let endT = new Date(booking.end_time);
     if (booking.booking_day && booking.end_time) {

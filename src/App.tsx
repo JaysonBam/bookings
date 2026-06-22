@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for App.tsx.
+ */
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { Box, Toolbar } from '@mui/material' 
 import { useEffect, useState } from 'react'
@@ -60,7 +63,6 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
           })
         }
       } else {
-         // Fallback if no db profile found yet but session has info? (Should rarely happen due to login logic)
          setCurrentUser({
              name: session.user.user_metadata.full_name || 'User',
              avatarUrl: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || undefined,
@@ -78,7 +80,6 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
   }
 
   if (loading) {
-    // You could render a skeleton or simple loading state here
     return null
   }
 
@@ -115,9 +116,9 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
           flex: 1, 
           display: location.pathname === '/bookings' ? 'flex' : 'block',
           flexDirection: 'column',
-          minHeight: 0, // CRITICAL: allows flex child to shrink below content size
+          minHeight: 0,
           overflow: location.pathname === '/bookings' ? 'hidden' : 'auto',
-          bgcolor: 'background.default', // Ensures background color covers the padding area
+          bgcolor: 'background.default',
           pt: location.pathname === '/bookings' ? 0 : { xs: 2, md: 3 },
           px: location.pathname === '/bookings' ? 0 : { xs: 1, md: 3 },
           pb: location.pathname === '/bookings' ? 0 : { xs: 8, md: 10 }

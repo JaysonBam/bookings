@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bookings\components\BookingGrid.tsx.
+ */
 import React, { useMemo, useEffect, useState, useRef, useCallback } from "react";
 import { format, addMinutes } from "date-fns";
 import { supabase } from "../../../lib/supabaseClient";
@@ -30,6 +33,7 @@ interface Booking {
   state?: 'Active' | 'Reserved' | 'Ended' | undefined;
   booking_day?: string;
   bulk_booking_id?: string | null;
+  borrowed_items?: string[];
 }
 
 interface BookingGridProps {
@@ -126,7 +130,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
       try {
         const { data: bookingsData, error: bookingsErr } = await supabase
           .from("bookings")
-          .select(`*, courses(id, name, color_hex)`)
+          .select(`*, courses(id, name, color_hex), borrowed_items`)
           .eq("booking_day", dateStr);
         if (bookingsErr) { showToast("Error", "Failed to load bookings", "error"); setLoading(false); return; }
         if (bookingsData) {
@@ -145,6 +149,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
               state: b.state,
               booking_day: b.booking_day,
               bulk_booking_id: b.bulk_booking_id,
+              borrowed_items: b.borrowed_items ?? [],
             } as Booking;
           });
           setBookings(mapped);
@@ -199,7 +204,6 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
         }
       )
       .subscribe(() => {
-        // status subscription logic
       });
 
     return () => {
@@ -280,7 +284,7 @@ export const BookingGrid: React.FC<BookingGridProps> = ({
                             width: 18,
                             height: 18,
                             borderRadius: '50%',
-                            background: '#b0b3b8', // Neutral grey, visible on both themes
+                            background: '#b0b3b8',
                             zIndex: 0,
                           }} />
                           <span style={{ position: 'relative', zIndex: 1, color: '#222' }}>{l.split(' ').pop()}</span>
