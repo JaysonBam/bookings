@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\access\styles.ts.
+ */
 import { Theme } from '@mui/material/styles';
 
 export const styles = (theme: Theme) => ({
@@ -32,7 +35,6 @@ export const styles = (theme: Theme) => ({
     borderRadius: theme.shape.borderRadius,
     border: `1px solid ${theme.palette.divider}`,
     overflow: 'hidden',
-    // Remove overflowing content on mobile, rely on responsive table techniques if needed
     [theme.breakpoints.down('sm')]: {
       marginTop: theme.spacing(2),
     },

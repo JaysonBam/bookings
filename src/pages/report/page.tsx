@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\report\page.tsx.
+ */
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import * as XLSX from "xlsx";
@@ -62,17 +65,16 @@ export default function ReportPage() {
     try {
       const [year, month] = selectedMonth.split("-");
       const startDate = `${selectedMonth}-01`;
-      // Calculate end date (last day of the month)
       const endD = new Date(parseInt(year), parseInt(month), 0);
       const endDate = format(endD, "yyyy-MM-dd");
 
-      // 1. Fetch Data
       let allBookings: any[] = [];
       let from = 0;
       let to = 999;
       let hasMore = true;
 
       while (hasMore) {
+        // Page through bookings to avoid large one-shot reads.
         const { data: bookings, error: bookingsError } = await supabase
           .from("bookings")
           .select("*")
@@ -115,32 +117,24 @@ export default function ReportPage() {
 
       if (coursesError) throw coursesError;
 
-      // Create Maps for easy lookup
       const roomMap = new Map(rooms?.map((r) => [r.id, r.name]));
       const courseMap = new Map(courses?.map((c) => [c.id, c.name]));
 
-      // Helper to calculate duration in hours
       const calculateDuration = (start: string, end: string) => {
         const s = parse(start, "HH:mm:ss", new Date());
         const e = parse(end, "HH:mm:ss", new Date());
         return differenceInMinutes(e, s) / 60;
       };
 
-      // Helper to sanitize strings for Excel (removes illegal control characters)
       const sanitizeExcel = (str: string) => {
         if (!str) return "";
-        // Replace ASCII control characters (00-1F, except tabs 09, newlines 0A, and carriage returns 0D)
-        // This prevents the "Unreadable Content" error in Excel
         return str.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
       };
 
-      // 2. Process Data for Report 1: Raw Booking Data
-      // Group bookings by bulk_booking_id + date + time
       const groupedBookings = new Map<string, any[]>();
       
       bookings?.forEach((booking) => {
-        // Create a unique key for grouping: bulk_booking_id + date + start_time
-        // This merges multi-room bookings for the same time slot, but keeps separate dates distinct
+        // Merge multi-room records that belong to the same bulk timeslot.
         const key = booking.bulk_booking_id 
           ? `${booking.bulk_booking_id}_${booking.booking_day}_${booking.start_time}`
           : booking.id;
@@ -153,7 +147,6 @@ export default function ReportPage() {
 
       const rawData = Array.from(groupedBookings.values()).map((group) => {
         const mainBooking = group[0];
-        // Combine room names
         const roomNames = group
           .map((b: any) => roomMap.get(b.room_id) || `Room ${b.room_id}`)
           .sort()
@@ -166,8 +159,6 @@ export default function ReportPage() {
           
         const duration = calculateDuration(mainBooking.start_time, mainBooking.end_time);
         
-        // Calculate student count
-        // Check for special bulk format in student_numbers: "bulk booking - [UUID] - [count]"
         let studentCount = 0;
         const bulkMatch = mainBooking.student_numbers?.match(/^bulk booking - [0-9a-fA-F-]+ - (\d+)$/);
         
@@ -175,23 +166,19 @@ export default function ReportPage() {
            studentCount = parseInt(bulkMatch[1], 10);
         } else {
            const sn = mainBooking.student_numbers || "";
-           // Only count lines if it is NOT a bulk string format we missed
            if (!sn.startsWith("bulk booking -")) {
                studentCount = sn.split("\n").filter((l: string) => l.trim()).length;
            }
         }
 
-        // Parse local date from YYYY-MM-DD
         const [y, m, d] = (mainBooking.booking_day || "").split('-').map((n: string) => parseInt(n, 10));
         const bookingDate = (y && m && d) ? new Date(y, m - 1, d) : new Date(0);
 
-        // Convert time string HH:mm:ss to Excel fraction of a day (0.0 to 1.0)
-        // This ensures purely Time values without Date components in Excel
         const timeToFraction = (timeStr: string) => {
             if (!timeStr) return 0;
             const parts = timeStr.split(':').map((n: string) => parseInt(n, 10));
-            // Hours * 3600 + Minutes * 60 + Seconds
             const seconds = (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+          // Excel stores time as a fraction of a day.
             return seconds / 86400; // 86400 seconds in a day
         };
         const startTime = timeToFraction(mainBooking.start_time);
@@ -210,24 +197,18 @@ export default function ReportPage() {
         };
       });
 
-      // Sort by: 1. Date, 2. Room, 3. Start Time
       rawData.sort((a, b) => {
-        // Sort by Date first
         const dateCompare = a.Date.getTime() - b.Date.getTime();
         if (dateCompare !== 0) return dateCompare;
         
-        // Then by Room
         const roomCompare = a.Room.localeCompare(b.Room);
         if (roomCompare !== 0) return roomCompare;
         
-        // Finally by Start Time
         return a["Start Time"] - b["Start Time"];
       });
 
-      // 3. Process Data for Report 2: Room Stats
       const roomStats: Record<string, { bookings: number; hours: number }> = {};
 
-      // Initialize all rooms with 0
       rooms?.forEach((room) => {
         roomStats[room.name] = { bookings: 0, hours: 0 };
       });
@@ -249,10 +230,8 @@ export default function ReportPage() {
         }))
         .sort((a, b) => a.Room.localeCompare(b.Room));
 
-      // 4. Process Data for Report 3: Course Stats
       const courseStats: Record<string, { bookings: number; hours: number }> = {};
 
-      // Initialize known courses with 0
       courses?.forEach((course) => {
         courseStats[course.name] = { bookings: 0, hours: 0 };
       });
@@ -279,47 +258,40 @@ export default function ReportPage() {
         }))
         .sort((a, b) => a.Course.localeCompare(b.Course));
 
-      // 5. Generate Excel File
       const wb = XLSX.utils.book_new();
 
       const ws1 = XLSX.utils.json_to_sheet(rawData || [], { cellDates: true });
 
-      // Apply Column Formatting: Raw Data
       if (ws1['!ref']) {
         const range = XLSX.utils.decode_range(ws1['!ref']);
+        // Force explicit Excel cell formats to prevent auto-coercion.
         const timeFmt = XLSX.SSF.get_table()[20] || 'h:mm'; // Use 24-hour Time format (ID 20)
 
         for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-          // Date (A) - South African format
           const dateCell = ws1[XLSX.utils.encode_cell({r: R, c: 0})];
           if (dateCell) { dateCell.t = 'd'; dateCell.z = 'dd/mm/yyyy'; }
 
-          // Room (B), Course (C)
           const roomCell = ws1[XLSX.utils.encode_cell({r: R, c: 1})];
           if (roomCell) { roomCell.t = 's'; roomCell.z = '@'; }
           
           const courseCell = ws1[XLSX.utils.encode_cell({r: R, c: 2})];
           if (courseCell) { courseCell.t = 's'; courseCell.z = '@'; }
 
-          // Start Time (D), End Time (E)
           const startCell = ws1[XLSX.utils.encode_cell({r: R, c: 3})];
           if (startCell) { startCell.t = 'n'; startCell.z = timeFmt; }
           
           const endCell = ws1[XLSX.utils.encode_cell({r: R, c: 4})];
           if (endCell) { endCell.t = 'n'; endCell.z = timeFmt; }
 
-          // Duration (F)
           const durCell = ws1[XLSX.utils.encode_cell({r: R, c: 5})];
           if (durCell) { durCell.t = 'n'; durCell.z = '0.00'; }
 
-          // Booked By (G), Student Numbers (H)
           const bookedByCell = ws1[XLSX.utils.encode_cell({r: R, c: 6})];
           if (bookedByCell) { bookedByCell.t = 's'; bookedByCell.z = '@'; }
           
           const studNumCell = ws1[XLSX.utils.encode_cell({r: R, c: 7})];
           if (studNumCell) { studNumCell.t = 's'; studNumCell.z = '@'; }
 
-          // Student Count (I)
           const studCountCell = ws1[XLSX.utils.encode_cell({r: R, c: 8})];
           if (studCountCell) { studCountCell.t = 'n'; studCountCell.z = '0'; }
         }
@@ -327,7 +299,6 @@ export default function ReportPage() {
 
       XLSX.utils.book_append_sheet(wb, ws1, "Raw Data");
 
-      // Helper for other reports
       const formatStatSheet = (ws: XLSX.WorkSheet) => {
         if (!ws['!ref']) return;
         const range = XLSX.utils.decode_range(ws['!ref']);
@@ -351,9 +322,9 @@ export default function ReportPage() {
       formatStatSheet(ws3);
       XLSX.utils.book_append_sheet(wb, ws3, "Course Stats");
 
-      // Auto-width columns
       const setColWidth = (ws: XLSX.WorkSheet, data: any[]) => {
         if (data.length === 0) return;
+        // Size each column to the longest value in that column.
         const cols = Object.keys(data[0]).map((key) => {
           const maxLen = Math.max(
             key.length,
@@ -387,7 +358,6 @@ export default function ReportPage() {
     <Box sx={{ bgcolor: "background.default", minHeight: "100%", pb: { xs: 8, md: 12 } }}>
       <Container maxWidth="xl" sx={{ px: { xs: 1, md: 3 }, pt: { xs: 2, md: 3 } }}>
         <Grid container spacing={{ xs: 2, md: 3 }}>
-            {/* Control Panel */}
             <Grid item xs={12}>
                 <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 4 } }}>
                     <Box sx={{ flex: 1 }}>
@@ -421,7 +391,6 @@ export default function ReportPage() {
                 </Paper>
             </Grid>
 
-            {/* Information Cards */}
             <Grid item xs={12}>
                 <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ mt: 2, mb: 2 }}>Included in Report</Typography>
             </Grid>

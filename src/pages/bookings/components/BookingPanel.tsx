@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bookings\components\BookingPanel.tsx.
+ */
 import React, { useEffect, useState, useMemo } from "react";
 import { 
     Dialog, DialogContent, DialogTitle, DialogActions, 
@@ -34,7 +37,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
   const [loading, setLoading] = useState(false);
 
-  // --- Smart Initializers ---
   const [roomId, setRoomId] = useState<string>(() => {
     if (prefill?.booking) return String(prefill.booking.room_id)
     return prefill?.roomId ?? ""
@@ -67,7 +69,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             return String(mins)
           } catch(e) {}
       }
-      return "30"
+      return ""
   });
 
   const [staffName, setStaffName] = useState<string>(() => {
@@ -89,18 +91,14 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
   const [studentNumbers, setStudentNumbers] = useState<string>(() => prefill?.booking?.student_numbers || "");
 
-  // Bulk Student Count Logic
   const [totalStudents, setTotalStudents] = useState<string>("");
   const [isBulkCount, setIsBulkCount] = useState(false);
 
   useEffect(() => {
     const raw = prefill?.booking?.student_numbers || "";
-    // Regex to match "bulk booking - [UUID] - [count]"
-    // UUID regex approx: [0-9a-fA-F-]+
+        // Parse bulk marker format: bulk booking - <uuid> - <count>.
     const match = raw.match(/^bulk booking - ([0-9a-fA-F-]+) - (\d+)$/);
     
-    // If it matches OR if it's a known bulk group (even without count yet), we verify logic
-    // The user wants: in edit stage, if bulk group, use Total Students.
     if (prefill?.booking?.bulk_booking_id) {
         setIsBulkCount(true);
         if (match) {
@@ -136,12 +134,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
   const [selectedBorrowed, setSelectedBorrowed] = useState<Record<string, boolean>>(() => {
     const sel: Record<string, boolean> = {};
-    // If editing, load from booking
     if (prefill?.booking?.borrowed_items) {
         (prefill.booking.borrowed_items || []).forEach((it: string) => (sel[it] = true));
         return sel;
     }
-    // If new, init with false for current room items
     const targetId = prefill?.roomId ?? "";
     const r = rooms.find((x: any) => String(x.id) === targetId);
     (r?.borrowable_items || []).forEach((it: string) => (sel[it] = false));
@@ -151,7 +147,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const [dayBookings, setDayBookings] = useState<any[]>([]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
 
-  // Bulk Edit State (distinct from Creating Bulk Booking)
   const [isBulkEdit, setIsBulkEdit] = useState(false);
   const [bulkGroupBookings, setBulkGroupBookings] = useState<any[]>([]);
 
@@ -169,24 +164,20 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       }
   }, [prefill?.booking]);
 
-  // Bulk booking state
   const [isBulkBooking, setIsBulkBooking] = useState(false);
   const [bulkDates, setBulkDates] = useState<{ start: string; end: string }[]>([{ start: "", end: "" }]);
   const [bulkTimes, setBulkTimes] = useState<{ start: string; end: string }[]>([{ start: "", end: "" }]);
   const [bulkRoomIds, setBulkRoomIds] = useState<string[]>([]);
 
-  // Smart Select State
   const [isSmartSelecting, setIsSmartSelecting] = useState(false);
   const [rankedRooms, setRankedRooms] = useState<any[]>([]);
   const [currentRankIndex, setCurrentRankIndex] = useState(0);
   const [openingHours, setOpeningHours] = useState<{ start: string; end: string }>({ start: "06:00", end: "21:00" });
 
-  // Background fetch for validation data (no loading spinner)
   useEffect(() => {
     if (!open) return;
     const loadBackground = async () => {
         try {
-            // Fetch Settings
             const { data: hoursData } = await supabase.from("settings").select("value").eq("key", "operation_hours").maybeSingle();
             if (hoursData && hoursData.value) {
                 const val = hoursData.value as any;
@@ -195,11 +186,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                 setOpeningHours({ start, end });
             }
 
-            // Need dayBookings for validation logic
             const dateStr = startDate; 
             if (!dateStr) return;
 
-            // Simple fetch, don't clear form
+            // Keep availability data updated without blocking panel interaction.
             const { data: bookingsData } = await supabase
                 .from('bookings')
                 .select('id, room_id, start_time, end_time, state, booking_day')
@@ -215,8 +205,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     loadBackground();
   }, [open, startDate]); // Re-fetch if date changes
 
-  // Remove the old 'load' effect that repopulates everything
-  // effectively replaced by initializers above.
 
   useEffect(() => {
     if (!startDate || !open) return;
@@ -238,7 +226,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     };
     const startMins = parseTime(startClock);
     
-    // Initial limit is the closing time
     const [closeH, closeM] = openingHours.end.split(':').map(Number);
     let limitMins = closeH * 60 + closeM;
     
@@ -256,7 +243,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       if (String(b.room_id) !== String(roomId)) continue;
       if (prefill?.booking && String(b.id) === String(prefill.booking.id)) continue;
       
-      // Ignore late bookings for duration availability
+    // Late reservations are treated as reclaimable and do not cap duration.
       if (isLate(b)) continue;
 
       const bStart = parseTime(b.start_time);
@@ -272,8 +259,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     for (let d = 30; d <= maxDuration && d <= 120; d += 30) options.push(d);
     
     const currentDur = parseInt(duration, 10);
-    // If current duration is valid but blocked by non-late booking, it won't be in options.
-    // However, if we are editing an existing booking, we might want to keep it.
     if (!isNaN(currentDur) && currentDur > 0 && !options.includes(currentDur)) {
         if (currentDur <= maxDuration || (prefill?.booking && currentDur <= 120)) {
              options.push(currentDur);
@@ -294,7 +279,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     if (isNaN(currentDuration)) return [];
     const endMins = startMins + currentDuration;
     
-    // Initial limit is the closing time
     const [closeH, closeM] = openingHours.end.split(':').map(Number);
     let limitMins = closeH * 60 + closeM;
 
@@ -314,15 +298,17 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const currentDur = parseInt(duration);
     if (availableDurationOptions.length > 0) {
         if (!duration || Number.isNaN(currentDur)) {
-             setDuration(String(availableDurationOptions[0]));
-             return;
+            if (prefill?.booking) {
+                setDuration(String(availableDurationOptions[0]));
+            }
+            return;
         }
         const max = availableDurationOptions[availableDurationOptions.length - 1];
         if (currentDur > max) setDuration(String(max));
     } else {
         if (duration !== "") setDuration("");
     }
-  }, [availableDurationOptions, duration]);
+  }, [availableDurationOptions, duration, prefill?.booking]);
 
   useEffect(() => {
     const r = rooms.find((x) => String(x.id) === String(roomId));
@@ -347,14 +333,13 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   };
 
   const getOptimalRooms = (groupSize: number, allRooms: any[], bookings: any[], targetDate: Date, currentTime: Date) => {
-      // 1. Filter: groupSize <= max_people (Hard limit is max, min is recommendation)
+      // Rank rooms by fit, availability quality, maintenance load, then name.
       const validRooms = allRooms.filter(r => (r.max_people || 0) >= groupSize);
       
       const targetMins = targetDate.getHours() * 60 + targetDate.getMinutes();
       const endOfDayMins = 24 * 60;
 
       const roomMetrics = validRooms.map(room => {
-          // Calculate Metrics
           const rId = String(room.id);
           const roomBookings = bookings.filter((b: any) => String(b.room_id) === rId);
           
@@ -369,32 +354,25 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
               const end = parseISO(`${b.booking_day}T${b.end_time}`);
               const startMins = start.getHours() * 60 + start.getMinutes();
               
-              // Check if currently occupied: Use TARGET DATE for checking slot availability
               if (targetDate >= start && targetDate < end) {
                   if (b.state === 'Active') {
                       isOccupied = true;
                   } else if (b.state === 'Reserved') {
-                      // Check lateness: Use REAL CURRENT TIME for lateness calculation
                       const lateDiff = differenceInMinutes(currentTime, start);
                       if (lateDiff > 10) {
-                          // It is late, so it qualifies for Late Availability
                           currentLateMinutes = lateDiff;
                           isLateAvailable = true;
-                          // It is NOT considered "Occupied" for the filter
                       } else {
-                          // Less than 10 mins late, still occupied
                           isOccupied = true;
                       }
                   }
               }
 
-              // Check for overdue (Active and ended in the past): Use REAL CURRENT TIME for overdue check
               if (b.state === 'Active' && currentTime > end) {
                   const ovr = differenceInMinutes(currentTime, end);
                   if (ovr > maxOverdueMinutes) maxOverdueMinutes = ovr;
               }
 
-              // Find next booking start: Use TARGET DATE for finding gaps
               if (start > targetDate) {
                   if (startMins < nextBookingStart) {
                       nextBookingStart = startMins;
@@ -402,19 +380,12 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
               }
           });
 
-          // Calculate Minutes Available
-          // If occupied (and not late available), 0.
-          // If late available, we technically have 0 "clean" minutes, but user wants specific sorting.
-          // We will preserve minutesAvailable calculation based on next booking for display/logic,
-          // but use isLateAvailable for sorting Tier.
           let minutesAvailable = isOccupied ? 0 : (nextBookingStart - targetMins);
           if (minutesAvailable < 0) minutesAvailable = 0;
 
-          // Maintenance Issues
           const issuesCount = (room.dynamic_labels || []).length;
           const minRecommended = room.min_people || 0;
 
-          // Score Calculation
           let score = 0;
           if (groupSize >= minRecommended) {
               score = minRecommended;
@@ -435,46 +406,35 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           };
       });
       
-      // Note: My implementation filtered `validRooms` at the start of the function which is basically step 2.
 
       const availableRooms = roomMetrics.filter(m => !m.isOccupied);
 
 
-      // Sort
       availableRooms.sort((a, b) => {
-          // 1. Score Descending
           if (a.score !== b.score) return b.score - a.score;
 
-          // 2. Availability Tier: "Clean" (Empty) > "Late" (Occupied but late)
-          // "Clean" means !isLateAvailable. "Late" means isLateAvailable.
           if (a.isLateAvailable !== b.isLateAvailable) {
+              // Prefer clean availability before late-reclaimable slots.
               return a.isLateAvailable ? 1 : -1; // False (Clean) comes first
           }
 
-          // 3. Within Tier
           if (!a.isLateAvailable) {
-              // Both Clean: Time Available Descending
               if (a.minutesAvailable !== b.minutesAvailable) return b.minutesAvailable - a.minutesAvailable;
           } else {
-              // Both Late: Minutes Late Descending (More late is better/preferred to be overwritten)
               if (a.currentLateMinutes !== b.currentLateMinutes) return b.currentLateMinutes - a.currentLateMinutes;
           }
 
-          // 4. Overdue Priority (For clean rooms that might have previous overdue bookings?)
-          // Preference: No Overdue (0) > High Overdue (>0) > Low Overdue (>0)
           const aOv = a.maxOverdueMinutes;
           const bOv = b.maxOverdueMinutes;
           
           if (aOv === 0 && bOv > 0) return -1; // a is empty (better)
           if (aOv > 0 && bOv === 0) return 1;  // b is empty (better)
           if (aOv > 0 && bOv > 0) {
-             return bOv - aOv; // Both overdue, picking larger one first
+             return bOv - aOv;
           }
 
-          // 5. Issues Count Ascending (Less is better)
           if (a.issuesCount !== b.issuesCount) return a.issuesCount - b.issuesCount;
 
-          // 6. Alphabetical
           return a.name.localeCompare(b.name);
       });
 
@@ -490,15 +450,12 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         return;
     }
 
-    // Use currently selected date/time
     let targetDate = new Date();
     try {
         targetDate = parseISO(`${startDate}T${startClock}`);
     } catch (e) {
-        // invalid date
     }
 
-    // Fetch bookings for the selected date
     const { data: bookings } = await supabase
         .from('bookings')
         .select('id, room_id, start_time, end_time, state, booking_day')
@@ -509,7 +466,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     }
     setDayBookings(bookings);
 
-    // Run Algorithm
     const ranked = getOptimalRooms(size, rooms, bookings, targetDate, currentTime);
     
     if (ranked.length === 0) {
@@ -544,15 +500,12 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       try {
           const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
           
-          // Use form values for updates to ensure consistency
           const basePayload: any = {
              booked_by: staffName,
           };
 
-          // Handle Student Numbers / Bulk Count for GROUP UPDATE
           let studentNumbersPayload = null; // Default to null if not set
           
-          // If we are in bulk count mode (which is force-true for bulk edits now)
           if (isBulkCount && totalStudents) {
              let uuid = prefill?.booking?.bulk_booking_id;
              if (uuid) {
@@ -561,10 +514,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                  studentNumbersPayload = studentNumbers;
              }
           } else if (isBulkCount && !totalStudents) {
-              // If cleared, maybe we want it null or empty?
               studentNumbersPayload = null;
           } else {
-              // Standard student numbers (unlikely to hit here if isBulkCount is forced true for groups)
               studentNumbersPayload = studentNumbers;
           }
           
@@ -586,6 +537,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           }
 
           if (extensionMins > 0) {
+              // Extension ends the current group segment and creates a new active segment.
               const start = parseISO(`${startDate}T${startClock}`);
               const originalDuration = parseInt(duration, 10);
               const end = addMinutes(start, originalDuration);
@@ -593,8 +545,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
               
               const newClumpId = crypto.randomUUID();
               
-              // 1. End currently active ones
-              // We update ALL in group to Ended.
               const { error: updateError } = await supabase.from("bookings")
                   .update({ 
                       state: 'Ended', 
@@ -604,24 +554,15 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                   
               if (updateError) throw updateError;
               
-              // 2. Insert New Bookings for Extension
-              // We base them on the rooms in the current group
               const newBookings = bulkGroupBookings.map(b => {
-                  // If we updated the student count (basePayload has it), use it.
-                  // Otherwise copy from previous (b.student_numbers).
-                  // But wait, basePayload MIGHT have the OLD UUID in the string if we just constructed it above.
-                  // "bulk booking - [OLD_UUID] - count".
-                  // We need to update it to NEW UUID.
                   
                   let nextStudentNumbers = b.student_numbers;
                   if (basePayload.student_numbers && basePayload.student_numbers.startsWith("bulk booking -")) {
-                       // Replace old UUID with newClumpId
                        const parts = basePayload.student_numbers.split(' - ');
                        if (parts.length === 3) {
                            nextStudentNumbers = `bulk booking - ${newClumpId} - ${parts[2]}`;
                        }
                   } else if (b.student_numbers && b.student_numbers.startsWith("bulk booking -")) {
-                       // Even if we didn't change count, we must update UUID in the string
                        const parts = b.student_numbers.split(' - ');
                        if (parts.length === 3) {
                            nextStudentNumbers = `bulk booking - ${newClumpId} - ${parts[2]}`;
@@ -647,7 +588,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              showToast("Extended Group", `Extended ${newBookings.length} bookings`, "success");
 
           } else {
-               // Status Update - Apply state and any metadata changes to ALL
                const updatePayload = {
                    ...basePayload,
                    state
@@ -665,7 +605,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           onClose();
 
       } catch (err: any) {
-           // silent
            showToast("Bulk Update Failed", mapDatabaseError(err), "error");
       } finally {
           setLoading(false);
@@ -675,19 +614,15 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const analyzeChanges = () => {
     if (!prefill?.booking) return { isSharedChange: false, isIndividualChange: false, isExtension: false };
 
-    // Compare Current State vs Details
     const currentStartClock = startClock;
     const currentDuration = duration;
     const originalStart = prefill.booking.start_time.slice(0, 5);
-    // calculate original duration 
     const s = parseISO(`${prefill.booking.booking_day}T${prefill.booking.start_time}`);
     const e = parseISO(`${prefill.booking.booking_day}T${prefill.booking.end_time}`);
     const originalDur = Math.round((e.getTime() - s.getTime())/60000);
     
-    // 1. Time Changes (Start Time, Duration) -> Shared
     const isTimeChanged = (currentStartClock !== originalStart) || (parseInt(currentDuration) !== originalDur);
     
-    // 2. Course Changes -> Shared
     const originalCourseId = prefill.booking.course_id ? String(prefill.booking.course_id) : "";
     const originalCourseName = prefill.booking.course_name ? prefill.booking.course_name : "";
     
@@ -698,10 +633,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         isCourseChanged = otherCourseName !== originalCourseName;
     }
 
-    // 3. Student Count Changes -> Shared (if bulk)
     let isCountChanged = false;
     if (isBulkCount) {
-        // extract original
         const raw = prefill.booking.student_numbers || "";
         const match = raw.match(/^bulk booking - [0-9a-fA-F-]+ - (\d+)$/);
         const originalCount = match ? match[1] : "";
@@ -710,14 +643,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
     const isSharedChange = isTimeChanged || isCourseChanged || isCountChanged;
 
-    // 4. Room Change -> Individual
     const isRoomChanged = prefill.booking.room_id !== parseInt(roomId, 10);
     
-    // 5. Extension
     const isExtension = !!selectedExtension;
 
-    // 6. Borrowed/Staff -> Neutral/Either
-    // Not strictly enforcing logic on these, but they don't block either path on their own.
 
     return { isSharedChange, isIndividualChange: isRoomChanged, isExtension };
   };
@@ -728,7 +657,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       return;
     }
     
-    // Check if bulk edit and ask user
     let updateScope = 'single';
     if (isBulkEdit) {
         const { isSharedChange, isIndividualChange, isExtension } = analyzeChanges();
@@ -740,22 +668,15 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
         const actions: any[] = [];
         
-        // Rules:
-        // - Individual Change (Room) -> Only Single
-        // - Shared Change (Time, Course, Count) -> Only Group
-        // - Extension -> Allow Single (Split) or Group? User said "single booking can be extended".
-        // - No critical change (just staff/borrowed) -> Both
         
         if (isIndividualChange) {
             actions.push({ label: "Update This Only", value: 'single', variant: 'contained' });
         } else if (isSharedChange) {
              actions.push({ label: "Update Entire Group", value: 'group', variant: 'contained' });
         } else if (isExtension) {
-             // Extension allows both
              actions.push({ label: "Extend This Only", value: 'single', variant: 'outlined' });
              actions.push({ label: "Extend Entire Group", value: 'group', variant: 'contained' });
         } else {
-             // Neutral changes
              actions.push({ label: "Update This Only", value: 'single', variant: 'outlined' });
              actions.push({ label: "Update Entire Group", value: 'group', variant: 'contained' });
         }
@@ -775,7 +696,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     if (updateScope === 'group') {
         const { isIndividualChange } = analyzeChanges();
         if (isIndividualChange) {
-             // Should be caught above, but safety check
              showToast("Error", "Cannot apply room change to entire group.", "error");
              return;
         }
@@ -810,7 +730,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       return;
     }
 
-    // Opening/Closing Check
     const parseTime = (t: string) => {
         const [h, m] = t.split(':').map(Number);
         return h * 60 + m;
@@ -825,12 +744,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         return;
     }
 
-    // Check for collision with existing bookings, handling 'late' overrides
     const bookingsToDelete: string[] = [];
     if (!isBulkBooking) {
         const isLate = (b: any) => {
             if (b.state !== 'Reserved') return false;
-            // Assuming booking_day matches startDate
             try {
                 const bStart = parseISO(`${startDate}T${b.start_time}`);
                 const limit = addMinutes(bStart, 10);
@@ -845,16 +762,15 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              const bStart = parseTime(b.start_time);
              const bEnd = parseTime(b.end_time);
              
-             // Check Overlap
-             // (StartA < EndB) and (EndA > StartB)
              const overlaps = (bookingStartMins < bEnd && bookingEndMins > bStart);
              
              if (overlaps) {
                  if (isLate(b)) {
+                     // Late bookings can be auto-removed to free this overlapping slot.
                      if (!bookingsToDelete.includes(String(b.id))) {
                          bookingsToDelete.push(String(b.id));
                      }
-                     return false; // Not a hard collision yet, conditionally valid
+                     return false;
                  }
                  return true; // Hard collision
              }
@@ -883,7 +799,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                  setLoading(false);
                  return;
              }
-             // Continue to save...
         }
     }
 
@@ -908,7 +823,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       if (state === 'Active') {
          const startStr = format(start, "HH:mm:ss");
          
-         // Log Auto-End State Changes
          const { data: autoEndedBookings } = await supabase
             .from('bookings')
             .select('id, start_time, end_time, state')
@@ -921,7 +835,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
               const exactNow = await timeLib.getTime();
               for (const b of autoEndedBookings) {
                   const bEnd = parseISO(`${startDate}T${b.end_time}`);
-                  // diff: Time of change (start of new booking causing cut) - Original End Time
                   const diffMins = isSameDay(exactNow, bEnd) ? differenceInMinutes(exactNow, bEnd) : 1000;
                   await logEvent('state_change', {
                       type: 'auto',
@@ -949,11 +862,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       const originalDuration = parseInt(duration, 10);
       let end = addMinutes(start, originalDuration);
       
-      // Calculate the end time for the NEW booking if extended
       let extendedEnd = addMinutes(end, extensionMins);
 
-      // Handle 'Ended' logic (truncating time if ending now)
-      // Only applies if NOT extending
       if (state === 'Ended' && extensionMins === 0) {
           const now = await timeLib.getTime();
           const m = now.getMinutes();
@@ -962,7 +872,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           now.setSeconds(0);
           now.setMilliseconds(0);
           
-          // Truncate 'end'
           if (now < end) {
               if (now <= start) {
                    if (prefill?.booking) {
@@ -982,11 +891,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
               }
           }
       } else if (!prefill?.booking && extensionMins > 0) {
-          // If for some reason we are creating new and extension is set (unlikely via UI but safe to handle)
           end = extendedEnd; 
       } else if (prefill?.booking && extensionMins === 0) {
-          // Standard update, no extension
-           // Use 'end' as calculated (possibly truncated by Ended logic above)
       }
 
       const booking_day = startDate;
@@ -1012,9 +918,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
       if (prefill?.booking) {
         if (extensionMins > 0) {
-             // SPLIT LOGIC
-             // 1. Update Old Booking to Ended
-             // Time: Start -> End (Original Duration)
+                         // Split existing booking into an ended segment plus a new active extension.
              const oldPayload = {
                  ...basePayload,
                  start_time: format(start, "HH:mm:ss"),
@@ -1025,29 +929,14 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              const { error: updateError } = await supabase.from("bookings").update(oldPayload).eq("id", prefill.booking.id);
              if (updateError) throw updateError;
 
-             // Log Old Booking State Change (Extended)
              const exactNow = await timeLib.getTime();
-             const bEnd = end; // The end time of the old segment (which is 'end' calculated above)
-             // "difference between the time of the state change and the end time"
-             // State change happens roughly "now". End time is 'end'.
-             // Actually, the old booking ends at 'end'. We are truncating it to 'end' (if it was longer? No, end is start+duration).
-             // Wait, if I extend, "end" is the original end time.
-             // So bEnd is the original end time.
-             // But we are setting it to 'Ended' NOW.
-             // But the booking technically ends at 'end'.
-             // If I do this at 10:55 for a 11:00 end, and I extend.
-             // Old booking ends at 11:00 (state ended). New starts 11:00.
-             // Logic: "when a room is extended automatically ended".
-             // Type: extended. State: ended (Active->Ended).
-             // Time: diff(now, bEnd).
+             const bEnd = end;
              await logEvent('state_change', {
                  type: 'extended',
                  state: 'active_to_ended',
                  time: isSameDay(exactNow, bEnd) ? differenceInMinutes(exactNow, bEnd) : 1000
              });
 
-             // 2. Create New Booking (Active)
-             // Time: End -> ExtendedEnd
              const newPayload = {
                  ...basePayload,
                  start_time: format(end, "HH:mm:ss"),
@@ -1058,7 +947,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              const { error: insertError } = await supabase.from("bookings").insert(newPayload);
              if (insertError) throw insertError;
 
-             // Log Extension Creation
              await logEvent('booking_create', {
                  type: 'extension',
                  rank: null,
@@ -1069,7 +957,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
              showToast("Extended", "Booking extended (new session created)", "success");
         } else {
-            // Standard Update
             const payload = {
                 ...basePayload,
                 start_time: format(start, "HH:mm:ss"),
@@ -1079,22 +966,17 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             const { error } = await supabase.from("bookings").update(payload).eq("id", prefill.booking.id);
             if (error) throw error;
 
-            // Log Manual State Change
             if (state !== prefill.booking.state) {
                  const exactNow = await timeLib.getTime();
                  let timeDiff = 0;
                  let targetState: 'reserved_to_active' | 'active_to_ended' | null = null;
                  
-                 // Reserved -> Active
                  if (prefill.booking.state === 'Reserved' && state === 'Active') {
-                     // diff between state change and starting time
                      const bStart = parseISO(`${prefill.booking.booking_day}T${prefill.booking.start_time}`);
                      timeDiff = isSameDay(exactNow, bStart) ? differenceInMinutes(exactNow, bStart) : 1000;
                      targetState = 'reserved_to_active';
                  }
-                 // Active -> Ended
                  else if (prefill.booking.state === 'Active' && state === 'Ended') {
-                     // diff between state change and end time
                      const bEnd = parseISO(`${prefill.booking.booking_day}T${prefill.booking.end_time}`);
                      timeDiff = isSameDay(exactNow, bEnd) ? differenceInMinutes(exactNow, bEnd) : 1000;
                      targetState = 'active_to_ended';
@@ -1112,13 +994,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             showToast("Updated", "Booking updated", "success");
         }
       } else {
-        // Create New
-        // Note: New creations via this form don't usually use extension logic, 
-        // but if they did, `end` was irrelevant unless we update it.
-        // We really want start -> end (start+duration) here.
-        // If extensionMins was > 0 for new, we handled it with `end = extendedEnd` above? 
-        // Wait, line "else if (!prefill?.booking && extensionMins > 0) { end = extendedEnd; }" covers it.
-        // So `end` is correct.
         
         const payload = {
             ...basePayload,
@@ -1129,7 +1004,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         const { error } = await supabase.from("bookings").insert(payload);
         if (error) throw error;
 
-        // Log Creation
         await logEvent('booking_create', {
              type: isSmartSelecting ? 'smart' : 'manual',
              rank: isSmartSelecting ? (currentRankIndex + 1) : null,
@@ -1144,7 +1018,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       onBookingUpdate?.();
       onClose();
     } catch (err: any) {
-      // silent
       showToast("Save failed", mapDatabaseError(err), "error");
     } finally {
       setLoading(false);
@@ -1179,7 +1052,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     if (validDates.length === 0) newErrors.bulkDates = true;
     if (validTimes.length === 0) newErrors.bulkTimes = true;
 
-    // Validate Time Increments and Opening Hours
     const parseTime = (t: string) => {
         const [h, m] = t.split(':').map(Number);
         return h * 60 + m;
@@ -1230,8 +1102,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                     if (!tStart || !tEnd || tStart >= tEnd) continue;
                     
                     const clumpId = crypto.randomUUID();
-                    // We don't set student numbers during Bulk Creation anymore
-                    // const finalStudentNumbers = totalStudents ? `bulk booking - ${clumpId} - ${totalStudents}` : null;
 
                     for (const rId of bulkRoomIds) {
                         const payload: any = {
@@ -1401,7 +1271,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         }
     }
 
-    // Available duration logic
     let minNextStart = 24 * 60; 
     dayBookings.forEach(b => {
         if (String(b.room_id) !== String(rId)) return;
@@ -1415,7 +1284,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
     if (minNextStart < 24 * 60) {
         const diff = minNextStart - selectedTimeMins;
-        // Only show availability if it's 2 hours or less
         if (diff > 0 && diff <= 120) {
             let durationText = "";
             if (diff === 30) durationText = "30 min";
@@ -1546,7 +1414,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                                                                                                                             width: 18,
                                                                                                                                             height: 18,
                                                                                                                                             borderRadius: '50%',
-                                                                                                                                            background: '#b0b3b8', // Neutral grey, visible on both themes
+                                                                                                                                            background: '#b0b3b8',
                                                                                                                                             zIndex: 0,
                                                                                                                                         }} />
                                                                                                                                         <span style={{ position: 'relative', zIndex: 1, color: '#222' }}>{l.split(' ').pop()}</span>
@@ -1579,8 +1447,38 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                 <TextField type="time" fullWidth label="Start Time" value={startClock} onChange={e => setStartClock(e.target.value)} error={!!errors.startClock} InputLabelProps={{ shrink: true }} inputProps={{ step: 1800 }} />
                             </Grid>
                             <Grid item xs={6}>
-                                <TextField select fullWidth label="Duration" value={duration} onChange={e => setDuration(e.target.value)} error={!!errors.duration}>
-                                    {availableDurationOptions.map(d => <MenuItem key={d} value={String(d)}>{d} mins</MenuItem>)}
+                                <TextField
+                                    select
+                                    fullWidth
+                                    label="Duration"
+                                    value={duration}
+                                    onChange={e => setDuration(e.target.value)}
+                                    error={!!errors.duration}
+                                    SelectProps={{
+                                        renderValue: (val: unknown) => {
+                                            if (!val) return '';
+                                            const d = Number(val);
+                                            return isNaN(d) ? '' : `${d} mins`;
+                                        }
+                                    }}
+                                >
+                                    {availableDurationOptions.map(d => {
+                                        const endTime = startClock
+                                            ? format(addMinutes(parseISO(`2000-01-01T${startClock}`), d), "HH:mm")
+                                            : null;
+                                        return (
+                                            <MenuItem key={d} value={String(d)}>
+                                                <Box display="flex" justifyContent="space-between" width="100%">
+                                                    <span>{d} mins</span>
+                                                    {endTime && (
+                                                        <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
+                                                            until {endTime}
+                                                        </Typography>
+                                                    )}
+                                                </Box>
+                                            </MenuItem>
+                                        );
+                                    })}
                                 </TextField>
                             </Grid>
                              <Grid item xs={6}>

@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bookings\context\NowContext.tsx.
+ */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import timeLib from "../../../lib/time";
 

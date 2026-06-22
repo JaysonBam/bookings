@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\document\page.tsx.
+ */
 import { useEffect, ReactNode, useState } from 'react';
 import {
   Box,
@@ -74,7 +77,6 @@ export default function DocumentPage() {
                 </Box>
 
                 <Stack spacing={{ xs: 2, md: 3 }}>
-                    {/* BOOKINGS SECTION */}
                     <Paper elevation={0} variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
                         <Box sx={{ p: { xs: 2, md: 3 }, borderBottom: 1, borderColor: 'divider', bgcolor: theme.palette.mode === 'dark' ? 'action.hover' : 'grey.50' }}>
                             <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
@@ -104,7 +106,6 @@ export default function DocumentPage() {
                         <CardContent sx={{ p: { xs: 2, md: 4 } }}>
                             <Stack spacing={{ xs: 4, md: 6 }}>
                                 
-                                {/* 1. Understanding Bookings */}
                                 <Box>
                                     <Typography variant="h6" fontWeight="bold" gutterBottom>
                                         1. Understanding Bookings
@@ -125,7 +126,6 @@ export default function DocumentPage() {
                                     </Stack>
                                     
                                     <Box display="grid" gridTemplateColumns={{ xs: '1fr', md: '1fr 1fr 1fr' }} gap={{ xs: 2, md: 2 }}>
-                                        {/* RESERVED */}
                                         <Paper variant="outlined" sx={{ p: 2, borderColor: 'warning.light', bgcolor: theme.palette.mode === 'dark' ? 'transparent' : 'warning.lighter' }}>
                                             <Stack spacing={1}>
                                                 <Box display="flex" alignItems="center" gap={1}>
@@ -147,7 +147,6 @@ export default function DocumentPage() {
                                             </Stack>
                                         </Paper>
 
-                                        {/* ACTIVE */}
                                         <Paper variant="outlined" sx={{ p: 2, borderColor: 'success.light', bgcolor: theme.palette.mode === 'dark' ? 'transparent' : 'success.lighter' }}>
                                             <Stack spacing={1}>
                                                 <Box display="flex" alignItems="center" gap={1}>
@@ -163,7 +162,6 @@ export default function DocumentPage() {
                                             </Stack>
                                         </Paper>
 
-                                        {/* FINISHED */}
                                         <Paper variant="outlined" sx={{ p: 2, borderColor: 'info.light', bgcolor: theme.palette.mode === 'dark' ? 'transparent' : 'info.lighter' }}>
                                             <Stack spacing={1}>
                                                 <Box display="flex" alignItems="center" gap={1}>
@@ -195,7 +193,6 @@ export default function DocumentPage() {
 
                                 <Divider />
 
-                                {/* 2. Essential Details */}
                                 <Box>
                                     <Typography variant="h6" fontWeight="bold" gutterBottom>
                                         2. Essential Details
@@ -228,7 +225,6 @@ export default function DocumentPage() {
 
                                 <Divider />
 
-                                {/* 3. Smart Select */}
                                 <Box>
                                     <Box display="flex" alignItems="center" gap={1} mb={1}>
                                         <AutoModeIcon color="primary" />
@@ -266,7 +262,6 @@ export default function DocumentPage() {
 
                                 <Divider />
 
-                                {/* 4. Visual Aids & Tools */}
                                 <Box>
                                     <Typography variant="h6" fontWeight="bold" gutterBottom>
                                         4. Visual Aids & Tools
@@ -308,7 +303,6 @@ export default function DocumentPage() {
 
                                 <Divider />
 
-                                {/* 5. Advanced Features */}
                                 <Box>
                                     <Typography variant="h6" fontWeight="bold" gutterBottom>
                                         5. Advanced Features
@@ -341,7 +335,6 @@ export default function DocumentPage() {
                         </CardContent>
                     </Paper>
 
-                    {/* OTHER SECTIONS (Maintenance, Admin) */}
                     <Accordion disableGutters variant="outlined" sx={{ borderRadius: 2, '&:before': { display: 'none' } }}>
                         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                             <AccordionTrigger 

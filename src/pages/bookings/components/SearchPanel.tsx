@@ -1,3 +1,6 @@
+/**
+ * Purpose: Module logic for pages\bookings\components\SearchPanel.tsx.
+ */
 import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { IconButton, TextField, Card, CardContent, Typography, Box, Chip, CircularProgress } from '@mui/material';
@@ -71,7 +74,6 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selec
       booking.start_time_iso = bStart;
       booking.end_time_iso = bEnd;
     }
-    // 1. Text Search
     let matchesSearch = true;
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -80,7 +82,6 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selec
       const roomName = booking.rooms?.name?.toLowerCase() || "";
       matchesSearch = studentNumbers.includes(query) || bookedBy.includes(query) || roomName.includes(query);
     }
-    // 2. State Filter
     let matchesFilter = true;
     if (filter !== 'all') {
       if (filter === 'late' || filter === 'overdue') {
