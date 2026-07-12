@@ -7,6 +7,10 @@ import {
   CircularProgress,
   Container,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   InputAdornment,
   Paper,
@@ -20,7 +24,7 @@ import { useTheme } from '@mui/material/styles'
 import SearchIcon from '@mui/icons-material/Search'
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CloseIcon from '@mui/icons-material/Close'
 import SaveIcon from '@mui/icons-material/Save'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import DoneAllIcon from '@mui/icons-material/DoneAll'
@@ -101,10 +105,19 @@ const canCollectPart = (part: HexForgeCollectionPart) =>
 const isCollectedPart = (part: HexForgeCollectionPart) =>
   part.print_status === 'COLLECTED'
 
+const formatPrintStatus = (status: string) => status.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase())
+
+const collectionStatusLabel = (part: HexForgeCollectionPart) => {
+  if (isCollectedPart(part)) return 'Collected'
+  if (canCollectPart(part)) return 'Ready to collect'
+  return part.print_status_label || formatPrintStatus(part.print_status)
+}
+
 export default function CollectionsPage() {
   const theme = useTheme()
   const { setHeaderContent } = useLayout()
   const scanInputRef = useRef<HTMLInputElement | null>(null)
+  const previousProjectCodeRef = useRef<string | null>(null)
 
   const [indexItems, setIndexItems] = useState<HexForgeCollectionIndexItem[]>([])
   const [indexLoading, setIndexLoading] = useState(true)
@@ -118,6 +131,9 @@ export default function CollectionsPage() {
   const [collectorName, setCollectorName] = useState('')
   const [collectedByStudentNumber, setCollectedByStudentNumber] = useState('')
   const [collectingPartIds, setCollectingPartIds] = useState<string[]>([])
+  const [pendingCollectionPartIds, setPendingCollectionPartIds] = useState<string[]>([])
+  const [imagePreviewPart, setImagePreviewPart] = useState<HexForgeCollectionPart | null>(null)
+  const collectionSubmittingRef = useRef(false)
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
     message: '',
@@ -142,21 +158,25 @@ export default function CollectionsPage() {
     setCollectorName('')
     setCollectedByStudentNumber('')
     setCollectingPartIds([])
+    setPendingCollectionPartIds([])
+    collectionSubmittingRef.current = false
+    previousProjectCodeRef.current = null
   }, [])
 
-  const loadIndex = useCallback(async (reset = false) => {
-    if (reset) clearCollectionWorkspace()
+  const loadIndex = useCallback(async ({ resetWorkspace = false, focusAfterLoad = true } = {}) => {
+    if (resetWorkspace) clearCollectionWorkspace()
     setIndexLoading(true)
     setIndexError('')
     try {
       const data = await fetchHexForgeCollectionIndex()
       setIndexItems(data || [])
+      setIndexError('')
     } catch (error) {
       console.error('Failed to load HexForge collection index:', error)
       setIndexError(error instanceof Error ? error.message : 'Failed to load collection index.')
     } finally {
       setIndexLoading(false)
-      focusScanner()
+      if (focusAfterLoad) focusScanner()
     }
   }, [clearCollectionWorkspace, focusScanner])
 
@@ -175,7 +195,12 @@ export default function CollectionsPage() {
 
   useEffect(() => {
     setReceiptDraft(getSavedReceipt(project))
-    setCollectedByStudentNumber('')
+    const projectCode = project?.project_code || null
+    if (projectCode && previousProjectCodeRef.current && previousProjectCodeRef.current !== projectCode) {
+      setCollectorName('')
+      setCollectedByStudentNumber('')
+    }
+    if (projectCode) previousProjectCodeRef.current = projectCode
   }, [project])
 
   const openProject = useCallback(async (projectCode: string) => {
@@ -185,11 +210,18 @@ export default function CollectionsPage() {
       return
     }
 
+    const isDifferentProject = previousProjectCodeRef.current !== null && previousProjectCodeRef.current !== code
+    if (isDifferentProject) {
+      setCollectorName('')
+      setCollectedByStudentNumber('')
+      setReceiptDraft('')
+    }
+    setMatches([])
+    setProject(null)
     setProjectLoading(true)
     try {
       const data = await fetchHexForgeCollectionProject(code)
       setProject(data)
-      setMatches([])
       setQuery(code)
     } catch (error) {
       console.error('Failed to load HexForge collection project:', error)
@@ -202,9 +234,28 @@ export default function CollectionsPage() {
   }, [focusScanner, showToast])
 
   const runSearch = useCallback(() => {
+    setSnackbar((current) => ({ ...current, open: false }))
+    if (projectLoading) return
+
     const rawQuery = query.trim()
     const studentNumber = extractStudentNumber(rawQuery)
     const normalizedCode = normalizeProjectCode(rawQuery)
+
+    setMatches([])
+    setProject(null)
+
+    if (!rawQuery) {
+      showToast('Enter a project code, student number, name, or collection label.', 'info')
+      return
+    }
+
+    // A complete project code can be fetched without waiting for the search index.
+    if (/^[A-Z0-9]{5}$/.test(normalizedCode)) {
+      openProject(normalizedCode)
+      return
+    }
+
+    if (indexLoading) return
 
     if (studentNumber) {
       const studentMatches = indexItems
@@ -221,11 +272,6 @@ export default function CollectionsPage() {
       return
     }
 
-    if (/^[A-Z0-9]{5}$/.test(normalizedCode)) {
-      openProject(normalizedCode)
-      return
-    }
-
     const lowerQuery = rawQuery.toLowerCase()
     const fuzzyMatches = indexItems
       .filter((item) =>
@@ -237,11 +283,13 @@ export default function CollectionsPage() {
       .sort((a, b) => (b.last_part_updated_at || '').localeCompare(a.last_part_updated_at || ''))
 
     setMatches(fuzzyMatches)
-    if (fuzzyMatches.length === 0) {
+    if (fuzzyMatches.length === 1) {
+      openProject(fuzzyMatches[0].project_code)
+    } else if (fuzzyMatches.length === 0) {
       setProject(null)
       showToast('No active projects matched that search.', 'info')
     }
-  }, [indexItems, openProject, query, showToast])
+  }, [indexItems, indexLoading, openProject, projectLoading, query, showToast])
 
   const handleSaveReceipt = async () => {
     if (!project) return
@@ -262,30 +310,47 @@ export default function CollectionsPage() {
       showToast(error instanceof Error ? error.message : 'Could not save receipt number.', 'error')
     } finally {
       setReceiptSaving(false)
-      focusScanner()
     }
   }
 
-  const collectParts = async (partIds: string[]) => {
-    if (!project) return
+  const validateCollection = useCallback((partIds: string[]) => {
+    if (!project) return false
 
     if (!collectorName.trim()) {
       showToast('Enter the assisting staff member before collecting.', 'error')
-      return
-    }
-
-    if (!projectIsPaid(project)) {
-      showToast('Save a receipt number before collecting paid parts.', 'error')
-      return
+      return false
     }
 
     const normalizedStudentNumber = extractStudentNumber(collectedByStudentNumber)
     if (!normalizedStudentNumber) {
       showToast('Enter the eight-digit student number of the person collecting.', 'error')
-      return
+      return false
     }
 
+    if (!projectIsPaid(project)) {
+      showToast('Save a receipt number before collecting paid parts.', 'error')
+      return false
+    }
+
+    if (partIds.length === 0) {
+      showToast('Select at least one ready part before collecting.', 'error')
+      return false
+    }
+
+    return true
+  }, [collectedByStudentNumber, collectorName, project, showToast])
+
+  const requestCollectionConfirmation = useCallback((partIds: string[]) => {
+    if (!validateCollection(partIds)) return
+    setPendingCollectionPartIds(partIds)
+  }, [validateCollection])
+
+  const collectParts = async (partIds: string[]) => {
+    if (!project || !validateCollection(partIds) || collectionSubmittingRef.current) return false
+
+    const normalizedStudentNumber = extractStudentNumber(collectedByStudentNumber)
     setCollectingPartIds(partIds)
+    collectionSubmittingRef.current = true
     try {
       const result = await collectHexForgeParts(
         project.project_code,
@@ -294,20 +359,48 @@ export default function CollectionsPage() {
         normalizedStudentNumber
       )
       setProject(result.project)
-      await loadIndex()
+      await loadIndex({ focusAfterLoad: false })
       showToast(partIds.length === 1 ? 'Part collected.' : 'Collectable parts collected.', 'success')
+      return true
     } catch (error) {
       console.error('Failed to collect HexForge parts:', error)
       showToast(error instanceof Error ? error.message : 'Collection failed.', 'error')
+      return false
     } finally {
       setCollectingPartIds([])
-      focusScanner()
+      collectionSubmittingRef.current = false
     }
+  }
+
+  const confirmCollection = async () => {
+    if (collectingPartIds.length > 0) return
+    const collected = await collectParts(pendingCollectionPartIds)
+    if (collected) setPendingCollectionPartIds([])
   }
 
   const collectableParts = useMemo(
     () => project?.parts.filter((part) => canCollectPart(part) && !isCollectedPart(part)) || [],
     [project]
+  )
+
+  const partStatusSummary = useMemo(() => {
+    const parts = project?.parts || []
+    const collected = parts.filter(isCollectedPart).length
+    const ready = parts.filter((part) => canCollectPart(part) && !isCollectedPart(part)).length
+
+    return {
+      shown: parts.length,
+      ready,
+      collected,
+      notReady: parts.length - ready - collected
+    }
+  }, [project])
+
+  const pendingCollectionParts = useMemo(
+    () => pendingCollectionPartIds
+      .map((partId) => project?.parts.find((part) => part.part_id === partId))
+      .filter((part): part is HexForgeCollectionPart => Boolean(part)),
+    [pendingCollectionPartIds, project]
   )
 
   const collectionBlocked = projectNeedsReceipt(project) && !getSavedReceipt(project).trim()
@@ -342,6 +435,7 @@ export default function CollectionsPage() {
                   variant="contained"
                   startIcon={<SearchIcon />}
                   onClick={runSearch}
+                  disabled={indexLoading || projectLoading}
                   sx={{ minHeight: 56, px: 3, whiteSpace: 'nowrap' }}
                 >
                   Search
@@ -349,7 +443,8 @@ export default function CollectionsPage() {
                 <Tooltip title="Refresh active HexForge projects">
                   <span>
                     <IconButton
-                      onClick={() => loadIndex(true)}
+                      aria-label="Refresh active HexForge projects"
+                      onClick={() => loadIndex()}
                       disabled={indexLoading}
                       sx={{ width: 56, height: 56, border: `1px solid ${theme.palette.divider}`, borderRadius: 1 }}
                     >
@@ -367,7 +462,7 @@ export default function CollectionsPage() {
             </Stack>
           </Paper>
 
-          {matches.length > 1 && (
+          {matches.length > 0 && (
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
               <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
                 Matching active projects
@@ -377,7 +472,10 @@ export default function CollectionsPage() {
                   <Button
                     key={item.project_code}
                     variant="outlined"
-                    onClick={() => openProject(item.project_code)}
+                    onClick={() => {
+                      setMatches([])
+                      openProject(item.project_code)
+                    }}
                     sx={{ justifyContent: 'space-between', minHeight: 64, textAlign: 'left', gap: 2 }}
                   >
                     <Box>
@@ -422,15 +520,25 @@ export default function CollectionsPage() {
                       <Typography variant="h4" component="h1" sx={{ fontWeight: 800 }}>
                         {project.project_code}
                       </Typography>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'primary.main', overflowWrap: 'anywhere' }}>
+                        Collection location: {project.collection?.print_label || 'No collection label assigned'}
+                      </Typography>
                     </Box>
-                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                      <Chip label={project.state_label || project.state.replace(/_/g, ' ')} color={stateTone(project.state)} />
-                      <Chip
-                        label={projectIsPaid(project) ? 'Payment clear' : 'Receipt required'}
-                        color={projectIsPaid(project) ? 'success' : 'warning'}
-                        variant={projectIsPaid(project) ? 'filled' : 'outlined'}
-                      />
-                    </Stack>
+                    <Box>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        <Chip label={project.state_label || project.state.replace(/_/g, ' ')} color={stateTone(project.state)} />
+                        <Chip
+                          label={projectIsPaid(project) ? 'Payment clear' : 'Receipt required'}
+                          color={projectIsPaid(project) ? 'success' : 'warning'}
+                          variant={projectIsPaid(project) ? 'filled' : 'outlined'}
+                        />
+                      </Stack>
+                      {project.state_description?.trim() && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 380, overflowWrap: 'anywhere' }}>
+                          {project.state_description}
+                        </Typography>
+                      )}
+                    </Box>
                   </Stack>
 
                   <Divider />
@@ -443,7 +551,7 @@ export default function CollectionsPage() {
                     }}
                   >
                     <InfoBlock label="Student" value={project.collection?.student_name || 'Unavailable'} detail={project.collection?.student_number} />
-                    <InfoBlock label="Location label" value={project.collection?.print_label || 'Not set'} />
+                    <InfoBlock label="Location label" value={project.collection?.print_label || 'No collection label assigned'} />
                     <InfoBlock label="Course" value={project.course || 'Not set'} detail={project.lecturer || undefined} />
                     <InfoBlock label="Total" value={formatMoney(project.cost_total, project.currency)} detail={`${project.part_summary.total_parts} parts`} />
                   </Box>
@@ -514,25 +622,40 @@ export default function CollectionsPage() {
               </Paper>
 
               <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 2 }}>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2 }}>
+                <Stack spacing={1.5} sx={{ mb: 2 }}>
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
                   <Box>
                     <Typography variant="h6" fontWeight={800}>
                       Parts for collection
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {collectableParts.length} part{collectableParts.length === 1 ? '' : 's'} currently collectable
+                      {project.part_summary.total_parts} expected · {partStatusSummary.shown} shown · {partStatusSummary.ready} ready · {partStatusSummary.collected} collected · {partStatusSummary.notReady} not ready
                     </Typography>
                   </Box>
                   <Button
                     variant="contained"
                     color="success"
                     startIcon={<DoneAllIcon />}
-                    onClick={() => collectParts(collectableParts.map((part) => part.part_id))}
+                    onClick={() => requestCollectionConfirmation(collectableParts.map((part) => part.part_id))}
                     disabled={collectableParts.length === 0 || collectionBlocked || collectingPartIds.length > 0}
                     sx={{ minHeight: 44 }}
                   >
-                    Collect all
+                    Review collection of {collectableParts.length} ready parts
                   </Button>
+                  </Stack>
+
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    <Chip size="small" label={`Total ${partStatusSummary.shown}`} variant="outlined" />
+                    <Chip size="small" label={`Ready to collect ${partStatusSummary.ready}`} color="info" />
+                    <Chip size="small" label={`Collected ${partStatusSummary.collected}`} color="success" />
+                    <Chip size="small" label={`Not ready ${partStatusSummary.notReady}`} variant="outlined" />
+                  </Stack>
+
+                  {project.part_summary.total_parts !== partStatusSummary.shown && (
+                    <Alert severity="warning" variant="outlined">
+                      Expected {project.part_summary.total_parts} parts, but {partStatusSummary.shown} part records were returned.
+                    </Alert>
+                  )}
                 </Stack>
 
                 <Stack spacing={1.5}>
@@ -548,7 +671,8 @@ export default function CollectionsPage() {
                         currency={project.currency}
                         disabled={collectionBlocked || collectingPartIds.length > 0}
                         collecting={collectingPartIds.includes(part.part_id)}
-                        onCollect={() => collectParts([part.part_id])}
+                        onCollect={() => requestCollectionConfirmation([part.part_id])}
+                        onPreview={() => setImagePreviewPart(part)}
                       />
                     ))
                   )}
@@ -558,6 +682,87 @@ export default function CollectionsPage() {
           )}
         </Stack>
       </Container>
+
+      <Dialog
+        open={pendingCollectionPartIds.length > 0}
+        onClose={collectingPartIds.length > 0 ? undefined : () => setPendingCollectionPartIds([])}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Confirm part collection</DialogTitle>
+        <DialogContent dividers>
+          {project && (
+            <Stack spacing={2}>
+              <Typography color="text.secondary">
+                This will mark the listed parts as collected in HexForge.
+              </Typography>
+
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1.5 }}>
+                <InfoBlock label="Project" value={project.project_code} />
+                <InfoBlock label="Collection location" value={project.collection?.print_label || 'No collection label assigned'} />
+                <InfoBlock label="Student" value={project.collection?.student_name || 'Unavailable'} detail={project.collection?.student_number} />
+                <InfoBlock label="Collected by" value={collectedByStudentNumber} />
+                <InfoBlock label="Assisted by" value={collectorName} />
+                <InfoBlock
+                  label="Receipt status"
+                  value={projectNeedsReceipt(project) ? (getSavedReceipt(project) ? `Receipt ${getSavedReceipt(project)} saved` : 'Receipt required') : 'No receipt required'}
+                />
+              </Box>
+
+              <Typography fontWeight={800}>
+                {pendingCollectionParts.length} part{pendingCollectionParts.length === 1 ? '' : 's'} selected for collection
+              </Typography>
+
+              <Stack spacing={1}>
+                {pendingCollectionParts.map((part) => (
+                  <Paper key={part.part_id} variant="outlined" sx={{ p: 1, display: 'grid', gridTemplateColumns: '56px minmax(0, 1fr)', gap: 1.25, alignItems: 'center' }}>
+                    {part.thumbnail_url ? (
+                      <Box component="img" src={part.thumbnail_url} alt={`${part.part_name} thumbnail`} sx={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 1 }} />
+                    ) : (
+                      <Box sx={{ width: 56, height: 56, borderRadius: 1, bgcolor: 'action.hover', display: 'grid', placeItems: 'center', textAlign: 'center', p: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">No image</Typography>
+                      </Box>
+                    )}
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography fontWeight={800} sx={{ overflowWrap: 'anywhere' }}>#{part.part_number} · {part.part_name}</Typography>
+                      <Chip size="small" label={collectionStatusLabel(part)} color={printTone(part.print_status)} sx={{ mt: 0.5 }} />
+                    </Box>
+                  </Paper>
+                ))}
+              </Stack>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setPendingCollectionPartIds([])} disabled={collectingPartIds.length > 0}>Cancel</Button>
+          <Button variant="contained" color="success" onClick={confirmCollection} disabled={collectingPartIds.length > 0 || pendingCollectionPartIds.length === 0}>
+            {collectingPartIds.length > 0 ? 'Collecting…' : 'Confirm collection'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(imagePreviewPart)} onClose={() => setImagePreviewPart(null)} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ pr: 7 }}>
+          {imagePreviewPart?.part_name} · #{imagePreviewPart?.part_number}
+          <IconButton
+            aria-label="Close image preview"
+            onClick={() => setImagePreviewPart(null)}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {imagePreviewPart?.thumbnail_url && (
+            <Box
+              component="img"
+              src={imagePreviewPart.thumbnail_url}
+              alt={`${imagePreviewPart.part_name} preview`}
+              sx={{ display: 'block', width: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 1 }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar((current) => ({ ...current, open: false }))}>
         <Alert
@@ -595,20 +800,24 @@ function PartRow({
   currency,
   disabled,
   collecting,
-  onCollect
+  onCollect,
+  onPreview
 }: {
   part: HexForgeCollectionPart
   currency: string
   disabled: boolean
   collecting: boolean
   onCollect: () => void
+  onPreview: () => void
 }) {
   const collected = isCollectedPart(part)
   const collectable = canCollectPart(part) && !collected
+  const hasMaterials = Boolean(part.primary_material || part.secondary_material)
+  const hasIncompleteRecord = !part.thumbnail_url && !hasMaterials
   const materials = [
     part.primary_material
       ? `${part.primary_material}${part.primary_brand ? ` (${part.primary_brand})` : ''}: ${part.primary_estimated_weight || 0}g`
-      : 'Material not listed',
+      : '',
     part.secondary_material
       ? `${part.secondary_material}${part.secondary_brand ? ` (${part.secondary_brand})` : ''}: ${part.secondary_estimated_weight || 0}g`
       : ''
@@ -621,16 +830,23 @@ function PartRow({
         p: 1.5,
         borderRadius: 1.5,
         display: 'grid',
-        gridTemplateColumns: { xs: '64px minmax(0, 1fr)', md: '72px minmax(0, 1fr) auto' },
+        gridTemplateColumns: { xs: '72px minmax(0, 1fr)', md: '104px minmax(0, 1fr) auto' },
         gap: 1.5,
         alignItems: 'center',
         bgcolor: collected ? 'success.lighter' : 'background.paper'
       }}
     >
       <Box
+        component={part.thumbnail_url ? 'button' : 'div'}
+        type={part.thumbnail_url ? 'button' : undefined}
+        onClick={part.thumbnail_url ? onPreview : undefined}
+        aria-label={part.thumbnail_url ? `Preview image for ${part.part_name}` : undefined}
         sx={{
-          width: { xs: 64, md: 72 },
-          height: { xs: 64, md: 72 },
+          width: { xs: 72, md: 104 },
+          height: { xs: 72, md: 104 },
+          p: 0,
+          border: 0,
+          cursor: part.thumbnail_url ? 'pointer' : 'default',
           borderRadius: 1,
           overflow: 'hidden',
           bgcolor: 'action.hover',
@@ -646,7 +862,10 @@ function PartRow({
             sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         ) : (
-          <Inventory2OutlinedIcon color="disabled" />
+          <Stack spacing={0.25} alignItems="center">
+            <Inventory2OutlinedIcon color="disabled" />
+            <Typography variant="caption" color="text.secondary">No image</Typography>
+          </Stack>
         )}
       </Box>
 
@@ -658,10 +877,11 @@ function PartRow({
           <Typography variant="caption" color="text.secondary">
             #{part.part_number}
           </Typography>
-          <Chip size="small" label={part.print_status_label || part.print_status} color={printTone(part.print_status)} />
+          <Chip size="small" label={collectionStatusLabel(part)} color={printTone(part.print_status)} />
+          {hasIncompleteRecord && <Chip size="small" label="Incomplete part record" color="warning" variant="outlined" />}
         </Stack>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>
-          {materials.join(' | ')}
+          {hasMaterials ? materials.join(' | ') : 'Material details unavailable'}
         </Typography>
         {part.collection?.special_instruction && (
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
@@ -677,27 +897,23 @@ function PartRow({
       </Box>
 
       <Stack
-        direction={{ xs: 'row', md: 'column' }}
+        direction="column"
         spacing={1}
-        alignItems={{ xs: 'center', md: 'flex-end' }}
-        justifyContent="space-between"
+        alignItems={{ xs: 'stretch', md: 'flex-end' }}
         sx={{ gridColumn: { xs: '1 / -1', md: 'auto' } }}
       >
         <Typography fontWeight={900}>{formatMoney(part.total_cost, currency)}</Typography>
-        {collected ? (
-          <Chip icon={<CheckCircleIcon />} label="Collected" color="success" />
-        ) : collectable ? (
+        {collectable && (
           <Button
             variant="contained"
             color="success"
             startIcon={collecting ? <CircularProgress size={16} color="inherit" /> : <LocalShippingIcon />}
             onClick={onCollect}
             disabled={disabled || collecting}
+            sx={{ width: { xs: '100%', md: 'auto' } }}
           >
-            Collect
+            Collect part
           </Button>
-        ) : (
-          <Chip label="Not collectable" variant="outlined" />
         )}
       </Stack>
     </Paper>
