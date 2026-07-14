@@ -19,6 +19,7 @@ import SwipeableDrawer from '@mui/material/SwipeableDrawer'
 import logo from '../assets/logo.svg'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
+import Inventory2Icon from '@mui/icons-material/Inventory2'
 import PeopleIcon from '@mui/icons-material/People'
 import BugReportIcon from '@mui/icons-material/BugReport'
 import HelpIcon from '@mui/icons-material/Help'
@@ -72,6 +73,7 @@ export default function Sidebar({
 
   const menuItems = [
     { label: 'Bookings', path: '/bookings', icon: <CalendarMonthIcon /> },
+    { label: '3D Print Collection', path: '/collections', icon: <Inventory2Icon /> },
     { label: 'Analytics', path: '/report', icon: <AssessmentIcon />, protected: 'analytics' },
     { label: 'Manage Users', path: '/access', icon: <PeopleIcon />, protected: 'authorisation' },
     { label: 'Maintenance', path: '/maintenance', icon: <BuildIcon /> },

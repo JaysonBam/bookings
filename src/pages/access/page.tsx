@@ -34,8 +34,14 @@ import DeleteIcon from '@mui/icons-material/DeleteOutlined'
 import AddIcon from '@mui/icons-material/Add'
 import { useTheme } from '@mui/material/styles'
 import { styles as makeStyles } from './styles'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabaseClient'
+import {
+  addHexForgeProfile,
+  deleteHexForgeProfile,
+  fetchHexForgeProfiles as fetchHexForgeProfilesFromApi,
+  type HexForgeProfile
+} from '../../lib/hexForgeAccessClient'
 
 type Profile = {
   email: string
@@ -46,6 +52,13 @@ type Profile = {
   authorisation: boolean
   analytics: boolean
 }
+
+type PermissionField = 'settings' | 'authorisation' | 'analytics'
+
+const permissionFields: PermissionField[] = ['settings', 'analytics', 'authorisation']
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback
 
 export default function AccessPage() {
   const theme = useTheme()
@@ -58,6 +71,12 @@ export default function AccessPage() {
   const [newEmail, setNewEmail] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [hexForgeProfiles, setHexForgeProfiles] = useState<HexForgeProfile[]>([])
+  const [hexForgeLoading, setHexForgeLoading] = useState(true)
+  const [openHexForgeModal, setOpenHexForgeModal] = useState(false)
+  const [newHexForgeEmail, setNewHexForgeEmail] = useState('')
+  const [hexForgeAddError, setHexForgeAddError] = useState<string | null>(null)
+  const [hexForgeAdding, setHexForgeAdding] = useState(false)
 
   const [snackbar, setSnackbar] = useState<{open: boolean, message: string, severity: 'success' | 'error' | 'info'}>({
     open: false,
@@ -65,13 +84,13 @@ export default function AccessPage() {
     severity: 'success'
   });
 
-  const showToast = (message: string, severity: 'success' | 'error' | 'info' = 'success') => {
+  const showToast = useCallback((message: string, severity: 'success' | 'error' | 'info' = 'success') => {
       setSnackbar({ open: true, message, severity });
-  };
+  }, []);
 
   const handleCloseSnackbar = () => setSnackbar({ ...snackbar, open: false });
 
-  const fetchProfiles = async () => {
+  const fetchProfiles = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -86,11 +105,25 @@ export default function AccessPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [showToast])
+
+  const fetchHexForgeProfiles = useCallback(async () => {
+    try {
+      setHexForgeLoading(true)
+      const profiles = await fetchHexForgeProfilesFromApi()
+      setHexForgeProfiles(profiles || [])
+    } catch (error) {
+      console.error('Error fetching HexForge profiles:', error)
+      showToast('Failed to load 3D printing access list', 'error')
+    } finally {
+      setHexForgeLoading(false)
+    }
+  }, [showToast])
 
   useEffect(() => {
     fetchProfiles()
-  }, [])
+    fetchHexForgeProfiles()
+  }, [fetchProfiles, fetchHexForgeProfiles])
 
   const handleToggle = async (email: string, field: 'settings' | 'authorisation' | 'analytics', currentValue: boolean) => {
     try {
@@ -149,10 +182,42 @@ export default function AccessPage() {
       showToast('User added successfully', 'success')
       setNewEmail('')
       fetchProfiles()
-    } catch (err: any) {
-      setAddError(err.message || 'Failed to add user')
+    } catch (err) {
+      setAddError(getErrorMessage(err, 'Failed to add user'))
     } finally {
       setAdding(false)
+    }
+  }
+
+  const handleDeleteHexForgeUser = async (email: string) => {
+    if (!confirm(`Are you sure you want to remove ${email} from 3D printing access?`)) return
+
+    try {
+      setHexForgeProfiles(prev => prev.filter(p => p.email !== email))
+      await deleteHexForgeProfile(email)
+      showToast('3D printing user removed successfully', 'success')
+    } catch (error) {
+      console.error('Error deleting HexForge user:', error)
+      showToast('Failed to remove 3D printing user', 'error')
+      fetchHexForgeProfiles()
+    }
+  }
+
+  const handleAddHexForgeUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setHexForgeAddError(null)
+    setHexForgeAdding(true)
+
+    try {
+      await addHexForgeProfile(newHexForgeEmail)
+      showToast('3D printing user added successfully', 'success')
+      setNewHexForgeEmail('')
+      setOpenHexForgeModal(false)
+      fetchHexForgeProfiles()
+    } catch (err) {
+      setHexForgeAddError(getErrorMessage(err, 'Failed to add 3D printing user'))
+    } finally {
+      setHexForgeAdding(false)
     }
   }
 
@@ -186,15 +251,15 @@ export default function AccessPage() {
             </Box>
             <Divider sx={{ mb: 2 }} />
             <Stack spacing={1}>
-                {['settings', 'analytics', 'authorisation'].map((permission) => (
+                {permissionFields.map((permission) => (
                     <Box key={permission} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
                             {permission === 'authorisation' ? 'Access' : permission}
                         </Typography>
                         <Switch 
                             size="small"
-                            checked={profile[permission as keyof Profile] as boolean} 
-                            onChange={() => handleToggle(profile.email, permission as any, profile[permission as keyof Profile] as boolean)}
+                            checked={profile[permission]}
+                            onChange={() => handleToggle(profile.email, permission, profile[permission])}
                         />
                     </Box>
                 ))}
@@ -331,6 +396,139 @@ export default function AccessPage() {
       </TableContainer>
   )
 
+  const renderHexForgeMobileView = () => (
+    <Stack spacing={2}>
+      {hexForgeProfiles.map((profile) => (
+        <Card key={profile.email} elevation={0} sx={{ border: `1px solid ${theme.palette.divider}` }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar
+                src={profile.profile_url || undefined}
+                alt={profile.full_name || ''}
+                imgProps={{ referrerPolicy: 'no-referrer' }}
+              >
+                {(profile.full_name || profile.email)[0].toUpperCase()}
+              </Avatar>
+              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                <Typography variant="subtitle1" noWrap sx={{ fontWeight: 600 }}>
+                  {profile.full_name || (profile.status === 'active' ? 'Unknown Name' : 'Pending Registration')}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap display="block">
+                  {profile.email}
+                </Typography>
+              </Box>
+              <Chip
+                label={profile.status}
+                size="small"
+                color={profile.status === 'active' ? 'success' : 'default'}
+                variant={profile.status === 'active' ? 'filled' : 'outlined'}
+              />
+            </Box>
+          </CardContent>
+          <CardActions sx={{ justifyContent: 'flex-end', pt: 0, pb: 2, px: 2 }}>
+            <Button
+              size="small"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={() => handleDeleteHexForgeUser(profile.email)}
+            >
+              Remove User
+            </Button>
+          </CardActions>
+        </Card>
+      ))}
+      {hexForgeProfiles.length === 0 && (
+        <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
+          No 3D printing users found
+        </Typography>
+      )}
+    </Stack>
+  )
+
+  const renderHexForgeDesktopView = () => (
+    <TableContainer component={Paper} elevation={0} sx={styles.tableContainer}>
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableCell>User</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell align="right">Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {hexForgeProfiles.map((profile) => (
+            <TableRow key={profile.email} hover>
+              <TableCell>
+                <Box sx={styles.userCell}>
+                  {profile.status === 'active' ? (
+                    <>
+                      <Avatar
+                        src={profile.profile_url || undefined}
+                        alt={profile.full_name || ''}
+                        imgProps={{ referrerPolicy: 'no-referrer' }}
+                        sx={styles.avatar}
+                      >
+                        {(profile.full_name || profile.email)[0].toUpperCase()}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          {profile.full_name || 'Unknown Name'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {profile.email}
+                        </Typography>
+                      </Box>
+                    </>
+                  ) : (
+                    <>
+                      <Avatar sx={styles.avatar}>?</Avatar>
+                      <Box>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.secondary', fontStyle: 'italic' }}>
+                          Pending Registration
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {profile.email}
+                        </Typography>
+                      </Box>
+                    </>
+                  )}
+                </Box>
+              </TableCell>
+              <TableCell>
+                <Chip
+                  label={profile.status}
+                  size="small"
+                  color={profile.status === 'active' ? 'success' : 'default'}
+                  variant={profile.status === 'active' ? 'filled' : 'outlined'}
+                  sx={styles.statusChip}
+                />
+              </TableCell>
+              <TableCell align="right">
+                <Tooltip title="Delete 3D printing user">
+                  <IconButton
+                    color="error"
+                    size="small"
+                    onClick={() => handleDeleteHexForgeUser(profile.email)}
+                    sx={styles.actionButton}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </TableCell>
+            </TableRow>
+          ))}
+          {!hexForgeLoading && hexForgeProfiles.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
+                <Typography color="text.secondary">No 3D printing users found</Typography>
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  )
+
   return (
     <Box sx={styles.root}>
       <Header title="User Management" />
@@ -397,8 +595,36 @@ export default function AccessPage() {
         </Box>
       ) : isMobile ? renderMobileView() : renderDesktopView()}
 
+      <Box sx={{ mt: 5, mb: 2 }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-start" justifyContent="space-between">
+          <Box sx={{ maxWidth: '800px' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+              3D Printing / HexForge Access
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Manage the HexForge allow-list for MISC 3D printing staff access.
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setOpenHexForgeModal(true)}
+            fullWidth={isMobile}
+            sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
+          >
+            Add 3D Printing User
+          </Button>
+        </Stack>
+      </Box>
+
+      {hexForgeLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : isMobile ? renderHexForgeMobileView() : renderHexForgeDesktopView()}
+
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={handleCloseSnackbar}>
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity as any} sx={{ width: '100%' }}>
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
             {snackbar.message}
         </Alert>
       </Snackbar>
@@ -430,6 +656,38 @@ export default function AccessPage() {
                 <Button variant="contained" type="submit" disabled={adding}>
                     {adding ? 'Adding...' : 'Add User'}
                 </Button>
+            </Box>
+          </Stack>
+        </Box>
+      </Modal>
+
+      <Modal
+        open={openHexForgeModal}
+        onClose={() => setOpenHexForgeModal(false)}
+      >
+        <Box sx={styles.modalContent} component="form" onSubmit={handleAddHexForgeUser}>
+          <Typography variant="h6" sx={{ mb: 2 }}>Add 3D Printing User</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Enter the user's primary Google account to allow access to HexForge.
+            <br />
+            <strong>Note:</strong> This creates a pending 3D printing profile that becomes active when the user signs in.
+          </Typography>
+
+          <Stack spacing={2}>
+            {hexForgeAddError && <Alert severity="error">{hexForgeAddError}</Alert>}
+            <TextField
+              label="Gmail Address"
+              type="email"
+              fullWidth
+              required
+              value={newHexForgeEmail}
+              onChange={(e) => setNewHexForgeEmail(e.target.value)}
+            />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
+              <Button onClick={() => setOpenHexForgeModal(false)} disabled={hexForgeAdding}>Cancel</Button>
+              <Button variant="contained" type="submit" disabled={hexForgeAdding}>
+                {hexForgeAdding ? 'Adding...' : 'Add User'}
+              </Button>
             </Box>
           </Stack>
         </Box>

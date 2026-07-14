@@ -9,6 +9,7 @@ import { CustomThemeProvider } from './context/ThemeContext'
 import LoginPage from './pages/login/page'
 import AboutPage from './pages/about/page'
 import BookingsPage from './pages/bookings/page'
+import CollectionsPage from './pages/collections/page'
 import AccessPage from './pages/access/page'
 import BugPage from './pages/bug/page'
 import DocumentPage from './pages/document/page'
@@ -145,6 +146,7 @@ function App() {
           <Route path="/terms-of-service" element={<Navigate to="/terms" replace />} />
 
           <Route path="/bookings" element={<Layout><BookingsPage /></Layout>} />
+          <Route path="/collections" element={<Layout><CollectionsPage /></Layout>} />
           <Route path="/access" element={<Layout requiredPermission="authorisation"><AccessPage /></Layout>} />
           <Route path="/bug" element={<Layout><BugPage /></Layout>} />
           <Route path="/document" element={<Layout><DocumentPage /></Layout>} />
