@@ -4,13 +4,29 @@ const HEXFORGE_SUPABASE_URL = import.meta.env.VITE_HEXFORGE_SUPABASE_URL as stri
 const HEXFORGE_SUPABASE_ANON_KEY = import.meta.env.VITE_HEXFORGE_SUPABASE_ANON_KEY as string
 const HEXFORGE_COLLECTION_FUNCTION = 'bookings-collection'
 
-export type HexForgeCollectionIndexItem = {
+export type HexForgeCollectionBoardItem = {
   project_code: string
   student_name: string
   student_number: string
   state: string
+  group: 'help_desk' | 'partially_ready' | null
   print_label: string | null
-  last_part_updated_at: string | null
+  total_parts: number
+  completed_parts: number
+  collected_parts: number
+  remaining_parts: number
+  all_parts_completed: boolean
+  thumbnail_url: string | null
+  thumbnail_part_name: string | null
+  thumbnail_weight: number
+  payment_outstanding: boolean
+  last_activity_at: string | null
+}
+
+export type HexForgeCollectionEmailDraft = {
+  to: string
+  subject: string
+  body: string
 }
 
 export type HexForgeCollectionPart = {
@@ -113,8 +129,11 @@ const requestHexForgeCollection = async <T>(path = '', init: RequestInit = {}) =
   return payload.data as T
 }
 
-export const fetchHexForgeCollectionIndex = () =>
-  requestHexForgeCollection<HexForgeCollectionIndexItem[]>('/index')
+export const fetchHexForgeCollectionBoard = () =>
+  requestHexForgeCollection<HexForgeCollectionBoardItem[]>('/board')
+
+export const searchHexForgeCollection = (query: string) =>
+  requestHexForgeCollection<HexForgeCollectionBoardItem[]>(`/search?q=${encodeURIComponent(query)}`)
 
 export const fetchHexForgeCollectionProject = (projectCode: string) =>
   requestHexForgeCollection<HexForgeCollectionProject>(`?code=${encodeURIComponent(projectCode)}`)
@@ -134,4 +153,16 @@ export const collectHexForgeParts = (
   requestHexForgeCollection<{ project: HexForgeCollectionProject }>('/collect', {
     method: 'POST',
     body: JSON.stringify({ projectCode, partIds, collectorName, collectedByStudentNumber })
+  })
+
+export const releaseHexForgeCollectionProject = (projectCode: string, printLabel?: string) =>
+  requestHexForgeCollection<{ project: HexForgeCollectionProject; warnings: string[] }>('/release', {
+    method: 'POST',
+    body: JSON.stringify({ projectCode, printLabel })
+  })
+
+export const prepareHexForgeCollectionEmail = (projectCode: string) =>
+  requestHexForgeCollection<HexForgeCollectionEmailDraft>('/email', {
+    method: 'POST',
+    body: JSON.stringify({ projectCode })
   })
