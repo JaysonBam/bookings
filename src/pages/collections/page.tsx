@@ -10,7 +10,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   IconButton,
   InputAdornment,
   LinearProgress,
@@ -50,6 +49,7 @@ import {
   mergeCollectionBoardItems,
   searchCollectionBoard
 } from '../../lib/collectionBoard'
+import CollectionEmailPreviewDialog, { type CollectionEmailPreviewData } from '../../components/CollectionEmailPreviewDialog'
 
 type SnackbarState = {
   open: boolean
@@ -58,14 +58,6 @@ type SnackbarState = {
 }
 
 const collectableStatuses = new Set(['PRINTED', 'POST_PROCESSING'])
-
-const stateTone = (state: string): 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' => {
-  if (state === 'READY_FOR_COLLECTION' || state === 'CLOSED') return 'success'
-  if (state === 'PARTIALLY_COLLECTED') return 'info'
-  if (state === 'IN_PRODUCTION') return 'primary'
-  if (state === 'CANCELLED') return 'default'
-  return 'warning'
-}
 
 const printTone = (status: string): 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' => {
   if (status === 'COLLECTED') return 'success'
@@ -139,6 +131,7 @@ export default function CollectionsPage() {
   const [releaseLabel, setReleaseLabel] = useState('')
   const [releasing, setReleasing] = useState(false)
   const [emailingCodes, setEmailingCodes] = useState<string[]>([])
+  const [emailPreview, setEmailPreview] = useState<CollectionEmailPreviewData | null>(null)
   const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'success' })
 
   const showToast = useCallback((message: string, severity: SnackbarState['severity'] = 'success') => {
@@ -391,9 +384,7 @@ export default function CollectionsPage() {
     setEmailingCodes((current) => [...current, item.project_code])
     try {
       const email = await prepareHexForgeCollectionEmail(item.project_code)
-      const mailto = `mailto:${encodeURIComponent(email.to)}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`
-      if (mailto.length > 8000) throw new Error('This email is too long to open safely. Shorten the saved collection template in HexForge settings.')
-      window.location.assign(mailto)
+      setEmailPreview({ draft: email })
     } catch (error) {
       console.error('Failed to prepare collection email:', error)
       showToast(error instanceof Error ? error.message : 'Could not prepare the collection email.', 'error')
@@ -401,6 +392,7 @@ export default function CollectionsPage() {
       setEmailingCodes((current) => current.filter((code) => code !== item.project_code))
     }
   }
+
 
   const helpDeskItems = useMemo(
     () => boardItems.filter((item) => item.group === 'help_desk' && item.remaining_parts > 0),
@@ -436,7 +428,6 @@ export default function CollectionsPage() {
           <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 2 }}>
             <Stack spacing={2}>
               <Box>
-                <Typography variant="h5" component="h1" fontWeight={900}>Collection handoff board</Typography>
                 <Typography color="text.secondary">
                   Scan or search without hiding the projects currently expected at the desk.
                 </Typography>
@@ -514,7 +505,6 @@ export default function CollectionsPage() {
             <Stack spacing={4}>
               <BoardSection
                 title="At help desk"
-                description="Projects the system says should be physically available for handout."
                 count={helpDeskItems.length}
                 tone="success"
                 items={helpDeskItems}
@@ -524,7 +514,6 @@ export default function CollectionsPage() {
               />
               <BoardSection
                 title="Partially ready"
-                description="In-production projects with at least one completed print."
                 count={partiallyReadyItems.length}
                 tone="primary"
                 items={partiallyReadyItems}
@@ -543,17 +532,15 @@ export default function CollectionsPage() {
         onClose={closeProject}
         fullWidth
         maxWidth="xl"
-        PaperProps={{ sx: { height: { xs: '96vh', md: '92vh' }, maxHeight: '96vh', borderRadius: { xs: 1, md: 2 } } }}
+        PaperProps={{ sx: { position: 'relative', height: { xs: '96vh', md: '92vh' }, maxHeight: '96vh', borderRadius: { xs: 1, md: 2 } } }}
         BackdropProps={{ sx: { bgcolor: alpha(theme.palette.common.black, 0.68) } }}
       >
-        <DialogTitle sx={{ pr: 7, borderBottom: 1, borderColor: 'divider' }}>
-          <Typography variant="overline" color="text.secondary" fontWeight={800}>Collection workspace</Typography>
-          <Typography variant="h5" fontWeight={900}>{activeProjectCode}</Typography>
-          <IconButton aria-label="Close collection workspace" onClick={closeProject} sx={{ position: 'absolute', right: 12, top: 16 }}>
+        <DialogTitle component="div" sx={{ minHeight: 56, p: { xs: 1, md: 1.5 }, display: 'flex', justifyContent: 'flex-end', bgcolor: 'background.default' }}>
+          <IconButton aria-label="Close collection workspace" onClick={closeProject}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ p: { xs: 1.5, md: 3 }, bgcolor: 'background.default' }}>
+        <DialogContent sx={{ px: { xs: 1.5, md: 3 }, pb: { xs: 1.5, md: 3 }, pt: 0, bgcolor: 'background.default' }}>
           {projectLoading && (
             <Box sx={{ minHeight: 320, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
               <Box><CircularProgress /><Typography color="text.secondary" sx={{ mt: 2 }}>Loading collection details</Typography></Box>
@@ -561,25 +548,12 @@ export default function CollectionsPage() {
           )}
           {!projectLoading && project && (
             <Stack spacing={2.5}>
-              <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 2 }}>
+              <Box sx={{ px: { xs: 1, md: 2 }, pb: 2.5, borderBottom: 1, borderColor: 'divider' }}>
                 <Stack spacing={2}>
-                  <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2}>
-                    <Box>
-                      <Typography variant="overline" color="text.secondary" fontWeight={800}>Project</Typography>
-                      <Typography variant="h4" component="h2" fontWeight={900}>{project.project_code}</Typography>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'primary.main', overflowWrap: 'anywhere' }}>
-                        Collection location: {project.collection?.print_label || 'No collection label assigned'}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                        <Chip label={project.state_label || project.state.replace(/_/g, ' ')} color={stateTone(project.state)} />
-                        <Chip label={projectIsPaid(project) ? 'Payment clear' : 'Receipt required'} color={projectIsPaid(project) ? 'success' : 'warning'} variant={projectIsPaid(project) ? 'filled' : 'outlined'} />
-                      </Stack>
-                      {project.state_description?.trim() && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 420 }}>{project.state_description}</Typography>}
-                    </Box>
-                  </Stack>
-                  <Divider />
+                  <Box>
+                    <Typography variant="overline" color="text.secondary" fontWeight={800}>Project</Typography>
+                    <Typography variant="h4" component="h2" fontWeight={900}>{project.project_code}</Typography>
+                  </Box>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' }, gap: 2 }}>
                     <InfoBlock label="Student" value={project.collection?.student_name || 'Unavailable'} detail={project.collection?.student_number} />
                     <InfoBlock label="Location label" value={project.collection?.print_label || 'No collection label assigned'} />
@@ -587,46 +561,40 @@ export default function CollectionsPage() {
                     <InfoBlock label="Total" value={formatMoney(project.cost_total, project.currency)} detail={`${project.part_summary.total_parts} parts`} />
                   </Box>
                 </Stack>
-              </Paper>
+              </Box>
 
-              <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 2 }}>
+              <Box sx={{ px: { xs: 1, md: 2 } }}>
                 <Stack spacing={2}>
-                  <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems={{ xs: 'stretch', lg: 'flex-end' }}>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="subtitle1" fontWeight={800}>Collection details</Typography>
-                      <Typography variant="body2" color="text.secondary">Receipt changes are saved to HexForge before collection is enabled.</Typography>
-                    </Box>
-                    <TextField label="Assisted by" value={collectorName} onChange={(event) => setCollectorName(event.target.value)} sx={{ minWidth: { xs: '100%', lg: 260 } }} />
+                  <Typography variant="h6" fontWeight={800}>Collection details</Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', lg: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr)' }, gap: 2, alignItems: 'end' }}>
+                    <TextField label="Assisted by" value={collectorName} onChange={(event) => setCollectorName(event.target.value)} fullWidth />
                     <TextField
                       label="Collected by student number"
                       value={collectedByStudentNumber}
                       onChange={(event) => setCollectedByStudentNumber(event.target.value.replace(/\D/g, '').slice(0, 8))}
                       inputProps={{ inputMode: 'numeric', maxLength: 8 }}
-                      sx={{ minWidth: { xs: '100%', lg: 260 } }}
+                      fullWidth
                     />
                     {projectNeedsReceipt(project) && (
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ minWidth: { xs: '100%', lg: 390 } }}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                         <TextField label="Receipt number" value={receiptDraft} onChange={(event) => setReceiptDraft(event.target.value)} fullWidth color={collectionBlocked ? 'warning' : 'primary'} />
                         <Button variant="contained" startIcon={receiptSaving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />} onClick={() => void handleSaveReceipt()} disabled={receiptSaving || !receiptDraft.trim()} sx={{ minHeight: 56, whiteSpace: 'nowrap' }}>Save receipt</Button>
                       </Stack>
                     )}
-                  </Stack>
+                  </Box>
                   {projectNeedsReceipt(project) ? (
                     <Alert severity={collectionBlocked ? 'warning' : 'success'} variant="outlined">
                       {collectionBlocked ? 'Payment is required. Save the receipt number before collecting any parts.' : `Receipt ${savedReceipt} is saved. Collection is enabled.`}
                     </Alert>
                   ) : <Alert severity="success" variant="outlined">No receipt is required for this project.</Alert>}
                 </Stack>
-              </Paper>
+              </Box>
 
               <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 2 }}>
                 <Stack spacing={1.5} sx={{ mb: 2 }}>
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
                     <Box>
                       <Typography variant="h6" fontWeight={800}>Parts for collection</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {project.part_summary.total_parts} expected · {partStatusSummary.shown} shown · {partStatusSummary.ready} ready · {partStatusSummary.collected} collected · {partStatusSummary.notReady} not ready
-                      </Typography>
                     </Box>
                     <Button variant="contained" color="success" startIcon={<DoneAllIcon />} onClick={() => requestCollectionConfirmation(collectableParts.map((part) => part.part_id))} disabled={collectableParts.length === 0 || collectionBlocked || collectingPartIds.length > 0} sx={{ minHeight: 44 }}>
                       Review collection of {collectableParts.length} ready parts
@@ -721,6 +689,8 @@ export default function CollectionsPage() {
         <DialogContent>{imagePreviewPart?.thumbnail_url && <Box component="img" src={imagePreviewPart.thumbnail_url} alt={`${imagePreviewPart.part_name} preview`} sx={{ display: 'block', width: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 1 }} />}</DialogContent>
       </Dialog>
 
+      <CollectionEmailPreviewDialog data={emailPreview} onClose={() => setEmailPreview(null)} onNotify={showToast} />
+
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar((current) => ({ ...current, open: false }))}>
         <Alert onClose={() => setSnackbar((current) => ({ ...current, open: false }))} severity={snackbar.severity} sx={{ width: '100%' }}>{snackbar.message}</Alert>
       </Snackbar>
@@ -730,7 +700,6 @@ export default function CollectionsPage() {
 
 function BoardSection({
   title,
-  description,
   count,
   tone,
   items,
@@ -740,7 +709,6 @@ function BoardSection({
   onRelease
 }: {
   title: string
-  description: string
   count: number
   tone: 'success' | 'primary'
   items: HexForgeCollectionBoardItem[]
@@ -757,9 +725,7 @@ function BoardSection({
             <Typography id={`${tone}-collection-section`} variant="h5" fontWeight={900}>{title}</Typography>
             <Chip label={count} color={tone} size="small" />
           </Stack>
-          <Typography color="text.secondary">{description}</Typography>
         </Box>
-        {tone === 'success' && count > 0 && <Typography variant="body2" fontWeight={800} color="success.main">Count these items against the physical desk stock</Typography>}
       </Stack>
       {items.length === 0 ? (
         <Paper variant="outlined" sx={{ py: 5, px: 2, textAlign: 'center', borderStyle: 'dashed', borderRadius: 2 }}>
@@ -830,8 +796,9 @@ function CollectionBoardCard({ item, emailing, onOpen, onEmail, onRelease }: {
           <Box sx={{ minWidth: 0 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
               <Box>
-                <Typography variant="overline" color="text.secondary" fontWeight={800}>Project</Typography>
+                <Typography variant="overline" color="text.secondary" fontWeight={800}>Reference code</Typography>
                 <Typography variant="h5" fontWeight={900}>{item.project_code}</Typography>
+                <Typography variant="caption" color="text.secondary" fontWeight={800}>Priority #{item.priority_number}</Typography>
               </Box>
               <Chip size="small" color={isHelpDesk ? (item.state === 'PARTIALLY_COLLECTED' ? 'info' : 'success') : 'primary'} label={isHelpDesk ? (item.state === 'PARTIALLY_COLLECTED' ? 'Partially collected' : 'At help desk') : 'Partially ready'} />
             </Stack>
@@ -847,7 +814,7 @@ function CollectionBoardCard({ item, emailing, onOpen, onEmail, onRelease }: {
         {item.payment_outstanding && <Alert severity="warning" variant="outlined" sx={{ py: 0 }}><Typography variant="caption" fontWeight={800}>Payment still needs attention</Typography></Alert>}
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
           <Button variant="outlined" onClick={onOpen} fullWidth>Open details</Button>
-          {isHelpDesk && <Button variant="contained" color="success" startIcon={emailing ? <CircularProgress size={15} color="inherit" /> : <EmailOutlinedIcon />} onClick={onEmail} disabled={emailing} fullWidth>{emailing ? 'Preparing' : 'Open email'}</Button>}
+          {isHelpDesk && <Button variant="contained" color="success" startIcon={emailing ? <CircularProgress size={15} color="inherit" /> : <EmailOutlinedIcon />} onClick={onEmail} disabled={emailing} fullWidth>{emailing ? 'Preparing' : 'Show email detail'}</Button>}
           {!isHelpDesk && item.all_parts_completed && onRelease && <Button variant="contained" startIcon={<MoveToInboxOutlinedIcon />} onClick={onRelease} fullWidth>Move to help desk</Button>}
         </Stack>
       </Stack>
