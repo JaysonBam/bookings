@@ -59,14 +59,6 @@ type SnackbarState = {
 
 const collectableStatuses = new Set(['PRINTED', 'POST_PROCESSING'])
 
-const stateTone = (state: string): 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' => {
-  if (state === 'READY_FOR_COLLECTION' || state === 'CLOSED') return 'success'
-  if (state === 'PARTIALLY_COLLECTED') return 'info'
-  if (state === 'IN_PRODUCTION') return 'primary'
-  if (state === 'CANCELLED') return 'default'
-  return 'warning'
-}
-
 const printTone = (status: string): 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' => {
   if (status === 'COLLECTED') return 'success'
   if (status === 'PRINTED' || status === 'POST_PROCESSING') return 'info'
