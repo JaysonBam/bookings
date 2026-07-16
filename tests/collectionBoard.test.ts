@@ -10,6 +10,7 @@ import type { HexForgeCollectionProject } from '../src/lib/hexForgeCollectionCli
 
 const baseProject: HexForgeCollectionProject = {
   project_code: 'ABCDE',
+  priority_number: 110,
   collection_code: null,
   state: 'IN_PRODUCTION',
   state_label: 'In production',

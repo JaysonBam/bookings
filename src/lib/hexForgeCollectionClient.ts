@@ -6,6 +6,7 @@ const HEXFORGE_COLLECTION_FUNCTION = 'bookings-collection'
 
 export type HexForgeCollectionBoardItem = {
   project_code: string
+  priority_number: number
   student_name: string
   student_number: string
   state: string
@@ -25,8 +26,10 @@ export type HexForgeCollectionBoardItem = {
 
 export type HexForgeCollectionEmailDraft = {
   to: string
+  student_number?: string
   subject: string
   body: string
+  html_body?: string
 }
 
 export type HexForgeCollectionPart = {
@@ -54,6 +57,7 @@ export type HexForgeCollectionPart = {
 
 export type HexForgeCollectionProject = {
   project_code: string
+  priority_number: number
   collection_code: string | null
   state: string
   state_label: string

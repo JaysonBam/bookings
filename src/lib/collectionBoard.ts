@@ -46,6 +46,7 @@ export const boardItemFromProject = (project: HexForgeCollectionProject): HexFor
 
   return {
     project_code: project.project_code,
+    priority_number: project.priority_number,
     student_name: project.collection?.student_name || 'Unavailable',
     student_number: project.collection?.student_number || '',
     state: project.state,
