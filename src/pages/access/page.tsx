@@ -30,6 +30,7 @@ import {
   Divider
 } from '@mui/material'
 import Header from '../../components/header'
+import TemporaryAccessPanel from './TemporaryAccessPanel'
 import DeleteIcon from '@mui/icons-material/DeleteOutlined'
 import AddIcon from '@mui/icons-material/Add'
 import { useTheme } from '@mui/material/styles'
@@ -571,6 +572,8 @@ export default function AccessPage() {
             <CircularProgress />
         </Box>
       ) : isMobile ? renderMobileView() : renderDesktopView()}
+
+      <TemporaryAccessPanel />
 
       <Box sx={{ mt: 5, mb: 2 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-start" justifyContent="space-between">

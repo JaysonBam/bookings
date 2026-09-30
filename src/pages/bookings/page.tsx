@@ -17,6 +17,7 @@ import { StyledPageContainer, StyledContentContainer, StyledGridContainer } from
 import { useLayout } from "../../components/LayoutContext";
 import { logEvent } from "../../lib/log";
 import type { BookingRow } from '../../api/supabase/types'
+import { useSession } from '../../context/SessionContext'
 
 type BookingPanelData = {
     roomId?: string
@@ -26,11 +27,13 @@ type BookingPanelData = {
 }
 
 const BookingsContent = () => {
+    const { profile } = useSession();
     const { confirm } = useConfirm();
     const { setHeaderContent } = useLayout();
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const [dateReady, setDateReady] = useState(false);
     const [currentUser, setCurrentUser] = useState<string>("");
+    useEffect(() => { setCurrentUser(profile?.full_name || ""); }, [profile?.full_name]);
     const [statusCounts, setStatusCounts] = useState<{late: number, overdue: number}>({late: 0, overdue: 0});
     const [initialSearchFilter, setInitialSearchFilter] = useState<'late' | 'overdue' | null>(null);
 

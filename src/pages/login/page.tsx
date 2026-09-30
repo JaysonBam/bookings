@@ -1,4 +1,4 @@
-import { Box, Button, Container, Paper, Typography, Stack, Alert, Link } from '@mui/material';
+import { Box, Button, Container, Paper, Typography, Stack, Alert, Link, TextField, Divider } from '@mui/material';
 import GoogleColorIcon from './components/GoogleIcon'
 import { useTheme } from '@mui/material/styles'
 import { styles as makeStyles } from './styles'
@@ -6,6 +6,8 @@ import logo from '../../assets/logo.svg'
 import { signInWithGoogle, signOut } from '../../api/supabase/auth'
 import { updateProfile } from '../../api/supabase/profiles'
 import { useSession } from '../../context/SessionContext'
+import { signInWithAccessCode } from '../../api/supabase/temporaryAccess'
+import { isTemporaryProfile } from '../../lib/accountAccess'
 import { useState, useEffect, useRef } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 
@@ -14,6 +16,7 @@ export default function LoginPage() {
   const styles = makeStyles(theme)
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [accessCode, setAccessCode] = useState('')
   const [showBackground, setShowBackground] = useState(false)
   const navigate = useNavigate()
   const { session, profile, loading: sessionLoading, refresh } = useSession()
@@ -40,14 +43,18 @@ export default function LoginPage() {
         const user = session.user
         const email = user.email
 
-        if (!email) throw new Error('No email found')
-
         if (!profile) {
           await signOut()
           setErrorMsg('Access denied, contact admin for access')
           setLoading(false)
           return
         }
+
+        if (isTemporaryProfile(profile)) {
+          navigate('/bookings', { replace: true })
+          return
+        }
+        if (!email) throw new Error('No email found')
 
         const updates = {
             full_name: user.user_metadata.full_name || user.user_metadata.name,
@@ -70,7 +77,7 @@ export default function LoginPage() {
       } catch (err) {
         console.error('Auth error:', err)
         setErrorMsg('Authentication error occurred.')
-        await signOut()
+        try { await signOut() } catch { /* Access is already blocked when the profile is invalid. */ }
         setLoading(false)
       }
     }
@@ -130,6 +137,31 @@ export default function LoginPage() {
             >
               {loading ? 'Signing in…' : 'Sign in with Google'}
             </Button>
+            <Divider sx={{ my: 2, width: '100%' }}>or</Divider>
+            <Box component="form" sx={{ width: '100%' }} onSubmit={async (event) => {
+              event.preventDefault()
+              handledUserId.current = null
+              setLoading(true)
+              setErrorMsg(null)
+              try {
+                await signInWithAccessCode(accessCode)
+                setAccessCode('')
+              } catch (error) {
+                setErrorMsg(error instanceof Error ? error.message : 'Unable to sign in with this code.')
+              } finally { setLoading(false) }
+            }}>
+              <TextField
+                label="Access code" type="password" fullWidth required value={accessCode}
+                onChange={(event) => setAccessCode(event.target.value)}
+                autoComplete="off" disabled={loading || sessionLoading}
+                inputProps={{ maxLength: 80, spellCheck: false }}
+                helperText="Use the temporary code provided by Access Control staff."
+              />
+              <Button type="submit" variant="contained" fullWidth sx={{ mt: 1.5 }}
+                disabled={loading || sessionLoading || !accessCode.trim()}>
+                Sign in with access code
+              </Button>
+            </Box>
             <Typography variant="caption" color="text.secondary" sx={styles.legalLinks}>
               For authorized departmental staff only. By signing in, you confirm you are authorized to use this internal departmental app. Review the{' '}
               <Link component={RouterLink} to="/about">app overview</Link>,{' '}

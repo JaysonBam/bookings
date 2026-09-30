@@ -21,6 +21,8 @@ import type {
 import { setTestingClockCache } from '../../../lib/time'
 import { getErrorMessage } from '../../../api/supabase/errors'
 import { removeBookingRows, upsertBookingRows } from './bookingsCache'
+import { useSession } from '../../../context/SessionContext'
+import { isTemporaryProfile } from '../../../lib/accountAccess'
 
 type SyncState = 'connecting' | 'synced' | 'offline'
 
@@ -52,6 +54,8 @@ const normalizeHours = (value: OperationHours | undefined) => ({
 })
 
 export function BookingsDataProvider({ children }: { children: React.ReactNode }) {
+  const { profile } = useSession()
+  const temporary = isTemporaryProfile(profile)
   const [rooms, setRooms] = useState<RoomRow[]>([])
   const [courses, setCourses] = useState<CourseRow[]>([])
   const [settings, setSettings] = useState<Record<string, unknown>>({})
@@ -180,7 +184,7 @@ export function BookingsDataProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     let active = true
-    Promise.all([
+    const refreshReferences = () => Promise.all([
       getAvailableRooms(),
       getCourses(),
       getSettings(['operation_hours', 'saturday_hours', 'testing_clock']),
@@ -191,12 +195,15 @@ export function BookingsDataProvider({ children }: { children: React.ReactNode }
       const nextSettings = Object.fromEntries(settingRows.map((row) => [row.key, row.value]))
       setSettings(nextSettings)
       setTestingClockCache((nextSettings.testing_clock as TestingClock | undefined) ?? null)
-    }).catch((error) => {
+    })
+    void refreshReferences().then(() => { if (temporary && active) setSyncState('synced') }).catch((error) => {
       if (active) setReferenceError(getErrorMessage(error, 'Failed to load booking configuration'))
     }).finally(() => active && setReferenceLoading(false))
 
-    const bookingsChannel = subscribeToBookingChanges(handleRealtimeChange, handleRealtimeStatus)
-    const settingsChannel = subscribeToSettingChanges((setting: SettingRow) => {
+    // Temporary sessions use reads that recheck access every time, without
+    // retaining long-lived Realtime subscriptions.
+    const bookingsChannel = temporary ? null : subscribeToBookingChanges(handleRealtimeChange, handleRealtimeStatus)
+    const settingsChannel = temporary ? null : subscribeToSettingChanges((setting: SettingRow) => {
       setSettings((current) => ({ ...current, [setting.key]: setting.value }))
       if (setting.key === 'testing_clock') setTestingClockCache(setting.value as TestingClock)
     })
@@ -212,6 +219,11 @@ export function BookingsDataProvider({ children }: { children: React.ReactNode }
       }
     }
     const onVisibility = () => { if (document.visibilityState === 'visible') reconcile() }
+    const polling = temporary ? window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      reconcile()
+      void refreshReferences().catch(() => setSyncState('offline'))
+    }, 15000) : null
     window.addEventListener('online', reconcile)
     window.addEventListener('offline', reconcile)
     window.addEventListener('focus', reconcile)
@@ -224,10 +236,11 @@ export function BookingsDataProvider({ children }: { children: React.ReactNode }
       window.removeEventListener('offline', reconcile)
       window.removeEventListener('focus', reconcile)
       document.removeEventListener('visibilitychange', onVisibility)
-      void removeRealtimeChannel(bookingsChannel)
-      void removeRealtimeChannel(settingsChannel)
+      if (polling) window.clearInterval(polling)
+      if (bookingsChannel) void removeRealtimeChannel(bookingsChannel)
+      if (settingsChannel) void removeRealtimeChannel(settingsChannel)
     }
-  }, [handleRealtimeChange, handleRealtimeStatus, refreshDate])
+  }, [handleRealtimeChange, handleRealtimeStatus, refreshDate, temporary])
 
   const getBookings = useCallback((date: string) => bookingsByDate[date] ?? EMPTY_BOOKINGS, [bookingsByDate])
   const getBooking = useCallback((id: string | number) => {

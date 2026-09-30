@@ -1,15 +1,19 @@
+**Archived prototype: temporary access is postponed. Do not merge or deploy this branch.**
+
 ## Bookings App
+
+Temporary code access setup and testing: [temporary access guide](docs/temporary-access.md).
 
 ### Tech Stack
 - **Frontend:** React (TypeScript, Vite)
-- **Authentication:** Google Auth (via Supabase)
+- **Authentication:** Google sign-in and temporary access codes (via Supabase)
 - **Backend/Database:** Supabase
 - **Deployment:** Vercel
 
 ---
 
 ### Prerequisites
-- Node.js (v18 or higher recommended)
+- Node.js 24 (also used to run the TypeScript tests)
 - npm (v9 or higher)
 - Supabase project (with Google Auth enabled)
 - Vercel account (for deployment)

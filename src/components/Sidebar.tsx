@@ -39,6 +39,7 @@ type User = {
   authorisation?: boolean
   analytics?: boolean
   settings?: boolean
+  isTemporary?: boolean
 }
 
 type Props = {
@@ -73,7 +74,7 @@ export default function Sidebar({
 
   const menuItems = [
     { label: 'Bookings', path: '/bookings', icon: <CalendarMonthIcon /> },
-    { label: '3D Print Collection', path: '/collections', icon: <Inventory2Icon /> },
+    { label: '3D Print Collection', path: '/collections', icon: <Inventory2Icon />, regularOnly: true },
     { label: 'Analytics', path: '/report', icon: <AssessmentIcon />, protected: 'analytics' },
     { label: 'Manage Users', path: '/access', icon: <PeopleIcon />, protected: 'authorisation' },
     { label: 'Maintenance', path: '/maintenance', icon: <BuildIcon /> },
@@ -83,6 +84,7 @@ export default function Sidebar({
   ]
 
   const filteredItems = menuItems.filter((item) => {
+    if (item.regularOnly && currentUser?.isTemporary) return false
     if (item.protected) {
       return currentUser?.[item.protected as keyof User] === true
     }

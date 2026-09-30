@@ -8,6 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --test tests/*.test.ts",
+    "test:browser": "playwright test",
+    "test:edge": "tsc -p tsconfig.edge.json",
+    "demo:access": "node tests/helpers/manualPreview.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -29,7 +32,9 @@
     "@mui/material": "^5.13.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@eslint/js": "^9.9.0",
+    "@playwright/test": "1.63.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

@@ -14,9 +14,9 @@ export const styles = (theme: Theme) => ({
     justifyContent: 'center',
     backgroundColor: 'background.default',
     p: { xs: 1, sm: 3 },
-    overflow: 'hidden',
+    overflowY: 'auto',
   },
-  container: { width: '100%', position: 'relative', zIndex: 1 },
+  container: { width: '100%', position: 'relative', zIndex: 1, maxHeight: '100%', overflowY: 'auto' },
   paper: {
     p: { xs: 2, sm: 6 },
     display: 'flex',

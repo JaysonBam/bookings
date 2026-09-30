@@ -24,6 +24,7 @@ import Sidebar from './components/Sidebar'
 import Header from './components/header'
 import { LayoutProvider, useLayout } from './components/LayoutContext'
 import { signOut } from './api/supabase/auth'
+import { canUseCollections, hasAppAccess, isTemporaryProfile } from './lib/accountAccess'
 
 type User = {
   name: string
@@ -31,9 +32,12 @@ type User = {
   authorisation?: boolean
   analytics?: boolean
   settings?: boolean
+  isTemporary?: boolean
 }
 
-function Layout({ children, requiredPermission }: { children: React.ReactNode, requiredPermission?: keyof User }) {
+function Layout({ children, requiredPermission, regularOnly = false }: {
+  children: React.ReactNode, requiredPermission?: keyof User, regularOnly?: boolean
+}) {
   const { open, onToggle, drawerWidth } = useLayout()
   const navigate = useNavigate()
   const location = useLocation()
@@ -44,6 +48,7 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
     settings: profile?.settings,
     authorisation: profile?.authorisation,
     analytics: profile?.analytics,
+    isTemporary: isTemporaryProfile(profile),
   } : undefined
 
   const handleSignOut = async () => {
@@ -55,7 +60,8 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
     return <AppShellLoading />
   }
 
-  if (!session) return <Navigate to="/login" replace />
+  if (!session || !hasAppAccess(profile)) return <Navigate to="/login" replace />
+  if (regularOnly && !canUseCollections(profile)) return <Navigate to="/bookings" replace />
 
   if (requiredPermission && currentUser && !currentUser[requiredPermission]) {
       return <Navigate to="/bookings" replace />
@@ -171,7 +177,7 @@ function App() {
           <Route path="/terms-of-service" element={<Navigate to="/terms" replace />} />
 
           <Route path="/bookings" element={<Layout><BookingsPage /></Layout>} />
-          <Route path="/collections" element={<Layout><CollectionsPage /></Layout>} />
+          <Route path="/collections" element={<Layout regularOnly><CollectionsPage /></Layout>} />
           <Route path="/access" element={<Layout requiredPermission="authorisation"><AccessPage /></Layout>} />
           <Route path="/bug" element={<Layout><BugPage /></Layout>} />
           <Route path="/document" element={<Layout><DocumentPage /></Layout>} />

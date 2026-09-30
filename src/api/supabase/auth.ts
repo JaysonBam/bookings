@@ -15,7 +15,8 @@ export const getAccessToken = async (message = 'You must be signed in.') => {
 }
 
 export const signOut = async () => {
-  const { error } = await supabase.auth.signOut()
+  // One shared code may have several sessions; signing out affects this device.
+  const { error } = await supabase.auth.signOut({ scope: 'local' })
   throwIfError(error, 'Failed to sign out')
 }
 

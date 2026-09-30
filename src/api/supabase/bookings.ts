@@ -21,6 +21,13 @@ export const BOOKING_COLUMNS = `
 
 const castBookings = (data: unknown) => (data || []) as BookingRow[]
 
+const requireChangedRows = <T,>(rows: T[], action: string) => {
+  if (rows.length === 0) {
+    throw new Error(`No bookings were ${action}. They may no longer exist, or your access has ended.`)
+  }
+  return rows
+}
+
 export const getBookingsForDate = async (date: string) => {
   const { data, error } = await supabase
     .from('bookings')
@@ -102,7 +109,7 @@ export const updateBookingGroup = async (bulkBookingId: string, updates: Booking
     .eq('bulk_booking_id', bulkBookingId)
     .select(BOOKING_COLUMNS)
   throwIfError(error, 'Failed to update the booking group')
-  return castBookings(data)
+  return requireChangedRows(castBookings(data), 'updated')
 }
 
 export const endEarlierBookings = async (roomId: string | number, date: string, startTime: string) => {
@@ -125,7 +132,7 @@ export const deleteBooking = async (id: string | number) => {
     .eq('id', id)
     .select('id,booking_day')
   throwIfError(error, 'Failed to delete the booking')
-  return (data || []) as Array<Pick<BookingRow, 'id' | 'booking_day'>>
+  return requireChangedRows((data || []) as Array<Pick<BookingRow, 'id' | 'booking_day'>>, 'deleted')
 }
 
 export const deleteBookings = async (ids: Array<string | number>) => {
@@ -136,7 +143,7 @@ export const deleteBookings = async (ids: Array<string | number>) => {
     .in('id', ids)
     .select('id,booking_day')
   throwIfError(error, 'Failed to delete bookings')
-  return (data || []) as Array<Pick<BookingRow, 'id' | 'booking_day'>>
+  return requireChangedRows((data || []) as Array<Pick<BookingRow, 'id' | 'booking_day'>>, 'deleted')
 }
 
 export const deleteBookingGroup = async (bulkBookingId: string) => {
@@ -146,7 +153,7 @@ export const deleteBookingGroup = async (bulkBookingId: string) => {
     .eq('bulk_booking_id', bulkBookingId)
     .select('id,booking_day')
   throwIfError(error, 'Failed to delete the booking group')
-  return (data || []) as Array<Pick<BookingRow, 'id' | 'booking_day'>>
+  return requireChangedRows((data || []) as Array<Pick<BookingRow, 'id' | 'booking_day'>>, 'deleted')
 }
 
 export const getBookingsPage = async (startDate: string, endDate: string, from: number, to: number) => {

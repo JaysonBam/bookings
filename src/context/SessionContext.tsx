@@ -2,6 +2,8 @@ import type { Session } from '@supabase/supabase-js'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { getAuthSession, subscribeToAuthChanges } from '../api/supabase/auth'
 import { getProfileByEmail } from '../api/supabase/profiles'
+import { getTemporaryAccessProfile } from '../api/supabase/temporaryAccess'
+import { isTemporaryProfile } from '../lib/accountAccess'
 import type { ProfileRow } from '../api/supabase/types'
 
 type SessionContextValue = {
@@ -19,11 +21,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const loadVersion = useRef(0)
 
-  const loadProfile = useCallback(async (nextSession: Session | null) => {
+  const loadProfile = useCallback(async (nextSession: Session | null, showLoading = true) => {
     const version = ++loadVersion.current
-    setLoading(true)
+    if (showLoading) setLoading(true)
     setSession(nextSession)
-    if (!nextSession?.user.email) {
+    if (!nextSession) {
       if (version === loadVersion.current) {
         setProfile(null)
         setLoading(false)
@@ -31,7 +33,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       return
     }
     try {
-      const nextProfile = await getProfileByEmail(nextSession.user.email)
+      const nextProfile = nextSession.user.app_metadata.access_kind === 'temporary'
+        ? await getTemporaryAccessProfile()
+        : nextSession.user.email ? await getProfileByEmail(nextSession.user.email) : null
       if (version === loadVersion.current) setProfile(nextProfile)
     } catch {
       if (version === loadVersion.current) setProfile(null)
@@ -57,6 +61,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       if (!active) return
       if (event === 'TOKEN_REFRESHED') {
         setSession(nextSession)
+        if (nextSession?.user.app_metadata.access_kind === 'temporary') {
+          void loadProfile(nextSession, false)
+        }
         return
       }
       void loadProfile(nextSession)
@@ -66,6 +73,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       subscription.unsubscribe()
     }
   }, [loadProfile])
+
+  useEffect(() => {
+    if (!session || !isTemporaryProfile(profile)) return
+    const revalidate = () => { void loadProfile(session, false) }
+    const interval = window.setInterval(revalidate, 15000)
+    const expiry = window.setTimeout(revalidate, Math.max(0, Date.parse(profile!.expires_at!) - Date.now()))
+    const onVisibility = () => { if (document.visibilityState === 'visible') revalidate() }
+    window.addEventListener('focus', revalidate)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.clearInterval(interval)
+      window.clearTimeout(expiry)
+      window.removeEventListener('focus', revalidate)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [loadProfile, profile, session])
 
   const value = useMemo(() => ({ session, profile, loading, refresh }), [session, profile, loading, refresh])
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>

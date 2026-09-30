@@ -60,7 +60,8 @@ schema_paths = [
     "./schemas/rooms.sql",
     "./schemas/courses.sql",
     "./schemas/bookings.sql",
-    "./schemas/logs.sql"
+    "./schemas/logs.sql",
+    "./schemas/temporary_access.sql"
 ]
 
 [db.seed]
@@ -202,13 +203,14 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Allow/disallow new user signups via email to your project.
+# Keep the email/password provider enabled for admin-created temporary accounts.
+# Email-only identities receive no booking/staff access under database policies.
 enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
@@ -388,3 +390,6 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+[functions.temporary-access]
+verify_jwt = false

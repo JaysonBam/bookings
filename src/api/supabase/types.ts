@@ -46,6 +46,8 @@ export type ReportBookingRow = Pick<
 >
 
 export type ProfileRow = {
+  access_kind?: 'regular' | 'temporary'
+  expires_at?: string
   email: string
   full_name: string | null
   profile_url: string | null
