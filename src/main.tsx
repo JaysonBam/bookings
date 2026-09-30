@@ -17,11 +17,13 @@ const router = createBrowserRouter(
     future: {
       v7_startTransition: true,
     },
-  } as unknown) as any,
+  } as unknown) as Parameters<typeof createBrowserRouter>[1],
 )
+
+const routerProviderFuture = { v7_startTransition: true } as unknown as React.ComponentProps<typeof RouterProvider>['future']
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RouterProvider router={router} future={({ v7_startTransition: true } as unknown) as any} />
+    <RouterProvider router={router} future={routerProviderFuture} />
   </StrictMode>,
 )

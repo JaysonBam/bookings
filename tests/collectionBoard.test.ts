@@ -6,7 +6,7 @@ import {
   mergeCollectionBoardItems,
   searchCollectionBoard
 } from '../src/lib/collectionBoard.ts'
-import type { HexForgeCollectionProject } from '../src/lib/hexForgeCollectionClient.ts'
+import type { HexForgeCollectionProject } from '../src/api/hexforge/collection.ts'
 
 const baseProject: HexForgeCollectionProject = {
   project_code: 'ABCDE',

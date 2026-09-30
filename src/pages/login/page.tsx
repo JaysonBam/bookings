@@ -3,29 +3,38 @@ import GoogleColorIcon from './components/GoogleIcon'
 import { useTheme } from '@mui/material/styles'
 import { styles as makeStyles } from './styles'
 import logo from '../../assets/logo.svg'
-import { supabase } from '../../lib/supabaseClient'
-import { useState, useEffect } from 'react'
+import { signInWithGoogle, signOut } from '../../api/supabase/auth'
+import { updateProfile } from '../../api/supabase/profiles'
+import { useSession } from '../../context/SessionContext'
+import { useState, useEffect, useRef } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 
 export default function LoginPage() {
   const theme = useTheme()
   const styles = makeStyles(theme)
-  const [loading, setLoading] = useState(() => {
-    const hash = window.location.hash
-    const search = window.location.search
-    return hash.includes('access_token') || hash.includes('refresh_token') || search.includes('code')
-  })
+  const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [showBackground, setShowBackground] = useState(false)
   const navigate = useNavigate()
+  const { session, profile, loading: sessionLoading, refresh } = useSession()
+  const handledUserId = useRef<string | null>(null)
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        setLoading(false)
-        return
-      }
+    const timer = window.setTimeout(() => setShowBackground(true), 100)
+    return () => window.clearTimeout(timer)
+  }, [])
 
+  useEffect(() => {
+    if (sessionLoading) return
+    if (!session) {
+      handledUserId.current = null
+      setLoading(false)
+      return
+    }
+    if (handledUserId.current === session.user.id) return
+    handledUserId.current = session.user.id
+
+    const checkUser = async () => {
       try {
         setLoading(true)
         const user = session.user
@@ -33,17 +42,11 @@ export default function LoginPage() {
 
         if (!email) throw new Error('No email found')
 
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('email', email)
-          .single()
-
-        if (profileError || !profile) {
-            await supabase.auth.signOut()
-            setErrorMsg('Access denied, contact admin for access')
-            setLoading(false)
-            return
+        if (!profile) {
+          await signOut()
+          setErrorMsg('Access denied, contact admin for access')
+          setLoading(false)
+          return
         }
 
         const updates = {
@@ -51,31 +54,33 @@ export default function LoginPage() {
             profile_url: user.user_metadata.avatar_url || user.user_metadata.picture,
         }
 
+        const bookingPagePromise = import('../bookings/page')
         if (profile.status === 'pending') {
-            await supabase.from('profiles').update({
+            await updateProfile(email, {
                 ...updates,
                 id: user.id,
                 status: 'active'
-            }).eq('email', email)
+            })
         } else {
-            await supabase.from('profiles').update(updates).eq('email', email)
+            await updateProfile(email, updates)
         }
 
+        await Promise.all([refresh(), bookingPagePromise])
         navigate('/bookings')
       } catch (err) {
         console.error('Auth error:', err)
         setErrorMsg('Authentication error occurred.')
-        await supabase.auth.signOut()
+        await signOut()
         setLoading(false)
       }
     }
 
-    checkUser()
-  }, [navigate])
+    void checkUser()
+  }, [navigate, profile, refresh, session, sessionLoading])
 
   return (
     <Box sx={styles.root}>
-      <Box aria-hidden sx={styles.background} />
+      <Box aria-hidden sx={{ ...styles.background, opacity: showBackground ? 1 : 0, transition: 'opacity 240ms ease-out' }} />
       <Box aria-hidden sx={styles.bgOverlay} />
       <Container maxWidth="sm" disableGutters sx={styles.container}>
         <Paper elevation={0} sx={styles.paper}>
@@ -113,15 +118,8 @@ export default function LoginPage() {
                 try {
                   setLoading(true)
                   setErrorMsg(null)
-                  await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                      redirectTo: `${window.location.origin}/login`,
-                      scopes: 'openid email profile',
-                    },
-                  })
+                  await signInWithGoogle(`${window.location.origin}/login`)
                 } catch (err) {
-                  // eslint-disable-next-line no-console
                   console.error('Google sign-in error', err)
                   setErrorMsg('Failed to initiate Google sign-in')
                   setLoading(false)

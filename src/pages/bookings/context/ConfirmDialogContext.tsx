@@ -5,9 +5,11 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 
+type ConfirmResult = string | boolean
+
 interface ConfirmAction {
     label: string;
-    value: any;
+    value: ConfirmResult;
     color?: 'inherit' | 'primary' | 'secondary' | 'success' | 'error' | 'info' | 'warning';
     variant?: 'text' | 'outlined' | 'contained';
 }
@@ -22,7 +24,7 @@ interface ConfirmOptions {
 }
 
 interface ConfirmDialogContextType {
-    confirm: (options: ConfirmOptions) => Promise<any>;
+    confirm: (options: ConfirmOptions) => Promise<ConfirmResult>;
 }
 
 const ConfirmDialogContext = createContext<ConfirmDialogContextType>({
@@ -32,17 +34,17 @@ const ConfirmDialogContext = createContext<ConfirmDialogContextType>({
 export const ConfirmDialogProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [open, setOpen] = useState(false);
     const [options, setOptions] = useState<ConfirmOptions>({});
-    const [resolver, setResolver] = useState<(value: any) => void>(() => {});
+    const [resolver, setResolver] = useState<(value: ConfirmResult) => void>(() => {});
 
     const confirm = (opts: ConfirmOptions) => {
         setOptions(opts);
         setOpen(true);
-        return new Promise<any>((resolve) => {
+        return new Promise<ConfirmResult>((resolve) => {
             setResolver(() => resolve);
         });
     };
 
-    const handleClose = (result: any) => {
+    const handleClose = (result: ConfirmResult) => {
         setOpen(false);
         resolver(result);
     };

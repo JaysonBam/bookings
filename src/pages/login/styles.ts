@@ -2,8 +2,9 @@
  * Purpose: Module logic for pages\login\styles.ts.
  */
 import loginBg from '../../assets/login-bg.svg'
+import type { Theme } from '@mui/material/styles'
 
-export const styles = (theme: any) => ({
+export const styles = (theme: Theme) => ({
   root: {
     position: 'fixed',
     inset: 0,

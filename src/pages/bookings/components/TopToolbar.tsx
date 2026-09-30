@@ -3,8 +3,8 @@
  */
 import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { Button, TextField, Box } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon, Warning as WarningIcon, Schedule as ScheduleIcon } from '@mui/icons-material';
+import { Button, TextField, Box, Chip, IconButton, Tooltip } from '@mui/material';
+import { Add as AddIcon, Search as SearchIcon, Warning as WarningIcon, Schedule as ScheduleIcon, Sync as SyncIcon, CloudOff as CloudOffIcon } from '@mui/icons-material';
 import { DateInput } from "../../../components/DateInput";
 
 interface TopToolbarProps {
@@ -17,6 +17,9 @@ interface TopToolbarProps {
     lateCount?: number;
     overdueCount?: number;
     onFilterClick?: (filter: 'late' | 'overdue') => void;
+    syncState?: 'connecting' | 'synced' | 'offline';
+    lastSyncedAt?: Date | null;
+    onRefresh?: () => void;
 }
 
 export const TopToolbar: React.FC<TopToolbarProps> = ({ 
@@ -28,7 +31,10 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     onUserChange,
     lateCount = 0,
     overdueCount = 0,
-    onFilterClick
+    onFilterClick,
+    syncState = 'connecting',
+    lastSyncedAt,
+    onRefresh,
 }) => {
   const [localUser, setLocalUser] = useState(currentUser || "");
 
@@ -52,16 +58,16 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   };
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 1, width: '100%', py: 0.5, overflowX: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: 1, flexShrink: 0 }}>
             <DateInput
                 size="small"
                 value={format(selectedDate, 'yyyy-MM-dd')}
                 onChange={handleDateChange}
-                sx={{ width: 160, bgcolor: 'background.paper', borderRadius: 1 }}
+                sx={{ width: { xs: 142, sm: 160 }, bgcolor: 'background.paper', borderRadius: 1 }}
             />
 
-            <Button variant="outlined" color="inherit" size="small" onClick={handleToday}>TODAY</Button>
+            <Button variant="outlined" color="inherit" size="small" onClick={handleToday}>Today</Button>
 
             <Button 
                 variant="contained" 
@@ -70,7 +76,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                 onClick={onBookClick}
                 color="primary"
             >
-                BOOK
+                Book
             </Button>
             <Button 
                 variant="outlined" 
@@ -79,11 +85,27 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                 onClick={onSearchClick}
                 color="inherit"
             >
-                SEARCH
+                Search
             </Button>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: 1, flexShrink: 0 }}>
+            <Tooltip title={lastSyncedAt ? `Last updated ${lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Waiting for synchronization'}>
+                <Chip
+                    size="small"
+                    variant="outlined"
+                    color={syncState === 'offline' ? 'error' : syncState === 'synced' ? 'success' : 'default'}
+                    icon={syncState === 'offline' ? <CloudOffIcon /> : <SyncIcon />}
+                    label={syncState === 'offline' ? 'Offline' : syncState === 'synced' ? 'Up to date' : 'Syncing'}
+                />
+            </Tooltip>
+            {onRefresh && (
+                <Tooltip title="Refresh bookings">
+                    <IconButton size="small" aria-label="Refresh bookings" onClick={onRefresh}>
+                        <SyncIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            )}
             {(lateCount > 0 || overdueCount > 0) && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>   
                     {lateCount > 0 && (
@@ -93,9 +115,9 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                             startIcon={<ScheduleIcon />}
                             onClick={() => onFilterClick?.('late')}
                             sx={{ 
-                                bgcolor: '#ff9800', // Orange
-                                color: 'white',
-                                '&:hover': { bgcolor: '#f57c00' },
+                                bgcolor: 'warning.main',
+                                color: 'warning.contrastText',
+                                '&:hover': { bgcolor: 'warning.dark' },
                                 fontWeight: 'bold',
                                 boxShadow: 1
                             }}
@@ -110,9 +132,9 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                             startIcon={<WarningIcon />}
                             onClick={() => onFilterClick?.('overdue')}
                             sx={{ 
-                                bgcolor: '#f44336', // Red
-                                color: 'white',
-                                '&:hover': { bgcolor: '#d32f2f' },
+                                bgcolor: 'error.main',
+                                color: 'error.contrastText',
+                                '&:hover': { bgcolor: 'error.dark' },
                                 fontWeight: 'bold',
                                 boxShadow: 1
                             }}

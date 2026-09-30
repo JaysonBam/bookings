@@ -1,7 +1,7 @@
 import type {
   HexForgeCollectionBoardItem,
   HexForgeCollectionProject
-} from './hexForgeCollectionClient'
+} from '../api/hexforge/collection'
 
 export const collectionCompletedStatuses = new Set(['PRINTED', 'POST_PROCESSING', 'COLLECTED'])
 

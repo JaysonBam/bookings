@@ -92,17 +92,20 @@ export default function Sidebar({
   const DrawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Toolbar sx={{ display: 'flex', alignItems: 'center', px: [2] }}>
-        <Box sx={{ flexGrow: 1, display: 'flex' }}>
-          <img
+        <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
+          <Box
+            component="img"
             src={logo}
-            height = {100}
-            width= 'auto'
-            style={{
+            alt="MISC"
+            sx={{
+              height: 44,
+              width: 'auto',
+              maxWidth: 180,
               filter: theme.palette.mode === 'dark' ? 'invert(1) brightness(1)' : 'none',
             }}
           />
         </Box>
-        <IconButton onClick={onToggle}>
+        <IconButton aria-label="Close navigation" onClick={finalOnToggle}>
           <ChevronLeftIcon />
         </IconButton>
       </Toolbar>

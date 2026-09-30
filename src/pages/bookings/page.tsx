@@ -1,8 +1,8 @@
 /**
  * Purpose: Module logic for pages\bookings\page.tsx.
  */
-import { useState, useEffect, useRef, SyntheticEvent, useCallback } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { useState, useEffect, useRef, SyntheticEvent, useCallback, useMemo } from "react";
+import { deleteBooking, getBookingById, updateBooking, updateBookingGroup } from '../../api/supabase/bookings'
 import timeLib from "../../lib/time";
 import { TopToolbar } from "./components/TopToolbar";
 import { BookingGrid } from "./components/BookingGrid";
@@ -10,29 +10,59 @@ import { BookingPanel } from "./components/BookingPanel";
 import { SearchPanel } from "./components/SearchPanel";
 import { useConfirm, ConfirmDialogProvider } from "./context/ConfirmDialogContext";
 import { NowProvider } from "./context/NowContext";
+import { BookingsDataProvider, useBookingsData } from './context/BookingsDataContext'
 import { format, parseISO, differenceInMinutes, isSameDay } from "date-fns";
 import { Snackbar, Alert } from "@mui/material";
 import { StyledPageContainer, StyledContentContainer, StyledGridContainer } from "./styles";
 import { useLayout } from "../../components/LayoutContext";
 import { logEvent } from "../../lib/log";
+import type { BookingRow } from '../../api/supabase/types'
+
+type BookingPanelData = {
+    roomId?: string
+    timeSlot?: string
+    booking?: BookingRow
+    bookingId?: string
+}
 
 const BookingsContent = () => {
     const { confirm } = useConfirm();
     const { setHeaderContent } = useLayout();
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+    const [dateReady, setDateReady] = useState(false);
     const [currentUser, setCurrentUser] = useState<string>("");
     const [statusCounts, setStatusCounts] = useState<{late: number, overdue: number}>({late: 0, overdue: 0});
     const [initialSearchFilter, setInitialSearchFilter] = useState<'late' | 'overdue' | null>(null);
+
+    const {
+        rooms,
+        courses,
+        operationHours,
+        referenceLoading,
+        referenceError,
+        syncState,
+        lastSyncedAt,
+        getBookings,
+        getBooking,
+        isDateLoading,
+        isDateRefreshing,
+        setActiveDate,
+        refreshDate,
+        upsertBookings,
+        removeBookings,
+    } = useBookingsData()
+    const selectedDateKey = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate])
+    const bookings = getBookings(selectedDateKey)
 
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState("");
     const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error" | "info">("info");
 
-    const showToast = (title: string, description: string, severity: "success" | "error" | "info" = "success") => {
+    const showToast = useCallback((title: string, description: string, severity: "success" | "error" | "info" = "success") => {
         setSnackbarMessage(`${title}: ${description}`);
         setSnackbarSeverity(severity);
         setSnackbarOpen(true);
-    };
+    }, []);
 
     const handleStatusCountsChange = useCallback((late: number, overdue: number) => {
         setStatusCounts(prev => {
@@ -52,45 +82,25 @@ const BookingsContent = () => {
     };
 
     useEffect(() => {
-        (async () => {
-            try {
-                const t = await timeLib.getTime();
-                setSelectedDate(t);
-            } catch (e) {
-            }
-        })();
-    }, []);
-    const [panelOpen, setPanelOpen] = useState(false);
-    const [panelData, setPanelData] = useState<any>(null);
-    const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const [highlightedBookingId, setHighlightedBookingId] = useState<string | null>(null);
-    const [refreshGridTrigger, setRefreshGridTrigger] = useState(0);
-    const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const [creationStartTime, setCreationStartTime] = useState<number | null>(null);
-
-    const [rooms, setRooms] = useState<any[]>([]);
-    const [courses, setCourses] = useState<any[]>([]);
+        if (referenceLoading) return
+        let active = true
+        timeLib.getTime()
+            .then((time) => { if (active) setSelectedDate(time) })
+            .catch((error) => console.warn('Unable to load the configured clock; using local time.', error))
+            .finally(() => { if (active) setDateReady(true) })
+        return () => { active = false }
+    }, [referenceLoading]);
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [{ data: roomsData, error: roomsError }, { data: coursesData, error: coursesError }] = await Promise.all([
-                    supabase.from("rooms").select("id,name,borrowable_items,is_available,dynamic_labels,max_people,min_people").order("name"),
-                    supabase.from("courses").select("id,name").order("name"),
-                ]);
-                
-                if (roomsError) throw roomsError;
-                if (coursesError) throw coursesError;
-
-                setRooms((roomsData || []).filter((r: any) => r.is_available !== false).map((r: any) => ({ ...r, id: String(r.id) })));
-                setCourses(coursesData || []);
-            } catch (error) {
-                console.error("Failed to load initial data", error);
-                showToast("Error", "Failed to load rooms and courses. Please refresh.", "error");
-            }
-        };
-        fetchData();
-    }, []);
+        if (!dateReady) return
+        setActiveDate(selectedDateKey)
+    }, [dateReady, selectedDateKey, setActiveDate])
+    const [panelOpen, setPanelOpen] = useState(false);
+    const [panelData, setPanelData] = useState<BookingPanelData | null>(null);
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [highlightedBookingId, setHighlightedBookingId] = useState<string | null>(null);
+    const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const [creationStartTime, setCreationStartTime] = useState<number | null>(null);
 
     const handleBookingSelect = (id: string) => {
         setHighlightedBookingId(id);
@@ -105,20 +115,7 @@ const BookingsContent = () => {
     const handleBookClick = useCallback(async () => {
         const now = await timeLib.getTime();
 
-        const { data: settings } = await supabase
-            .from('settings')
-            .select('value')
-            .eq('key', 'operation_hours')
-            .maybeSingle();
-
-        let openTime = "06:00";
-        let closeTime = "21:00";
-
-        if (settings?.value) {
-            const val = settings.value as any;
-            openTime = val.start ?? val.open ?? "06:00";
-            closeTime = val.end ?? val.close ?? "21:00";
-        }
+        const { start: openTime, end: closeTime } = operationHours
 
         const [closeH, closeM] = closeTime.split(':').map(Number);
         const [openH, openM] = openTime.split(':').map(Number);
@@ -141,7 +138,7 @@ const BookingsContent = () => {
         setPanelData({ timeSlot: now.toISOString() });
         setCreationStartTime(Date.now());
         setPanelOpen(true);
-    }, []);
+    }, [operationHours]);
 
     const handleCellClick = (roomId: string, timeSlotIso: string) => {
         setPanelData({ roomId, timeSlot: timeSlotIso });
@@ -152,14 +149,9 @@ const BookingsContent = () => {
     const handleBookingClick = (bookingId: string) => {
         (async () => {
             try {
-                const { data, error } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
-                if (error) {
-                    console.error('Error fetching booking', error);
-                    showToast("Error", "Could not load full booking details", "error");
-                    setPanelData({ bookingId });
-                } else {
-                    setPanelData({ booking: data });
-                }
+                const data = getBooking(bookingId) ?? await getBookingById(bookingId)
+                upsertBookings([data])
+                setPanelData({ booking: data });
             } catch (e) {
                 console.error('Failed to load booking', e);
                 showToast("Error", "Failed to load booking details", "error");
@@ -170,18 +162,17 @@ const BookingsContent = () => {
         })();
     };
 
+    useEffect(() => {
+        if (referenceError) showToast('Error', `${referenceError}. Refresh the page to try again.`, 'error')
+    }, [referenceError, showToast])
+
     const handleQuickAction = async (bookingId: string, action: 'activate' | 'end', source?: 'quick' | 'double_tap') => {
         const logType = source === 'double_tap' ? 'double_tap' : 'quick';
         try {
-            const { data: booking, error: fetchError } = await supabase
-                .from('bookings')
-                .select('start_time, end_time, booking_day, borrowed_items, bulk_booking_id, room_id, rooms(name)')
-                .eq('id', bookingId)
-                .single();
+            const booking = getBooking(bookingId) ?? await getBookingById(bookingId)
+            if (!booking) throw new Error("Booking not found");
 
-            if (fetchError || !booking) throw fetchError || new Error("Booking not found");
-
-            const roomName = (booking as any).rooms?.name || `Room ${booking.room_id}`;
+            const roomName = booking.rooms?.name || `Room ${booking.room_id}`;
             const startTime = format(parseISO(`${booking.booking_day}T${booking.start_time}`), 'HH:mm');
             const endTime = format(parseISO(`${booking.booking_day}T${booking.end_time}`), 'HH:mm');
 
@@ -239,7 +230,7 @@ const BookingsContent = () => {
                          { label: `${action === 'activate' ? 'Activate' : 'End'} Entire Group`, value: 'group', variant: 'contained' }
                      ]
                  });
-                 if (!result) return;
+                 if (typeof result !== 'string') return;
                  scope = result;
             }
 
@@ -269,17 +260,13 @@ const BookingsContent = () => {
                     if (now < bookingEnd) {
                         // End-before-start deletes; mid-session end truncates end_time.
                         if (now <= bookingStart) {
-                             const { error } = await supabase.from('bookings').delete().eq('id', bookingId);
-                             if (error) throw error;
+                             await deleteBooking(bookingId)
+                             removeBookings([bookingId])
                              showToast("Deleted", "Booking deleted (ended before start time)", "info");
                              return;
                         } else {
                             const newEndTime = format(now, "HH:mm:ss");
-                            const { error } = await supabase
-                                .from('bookings')
-                                .update({ state: newState, end_time: newEndTime })
-                                .eq('id', bookingId);
-                            if (error) throw error;
+                            upsertBookings([await updateBooking(bookingId, { state: newState, end_time: newEndTime })])
 
                             await logEvent('state_change', {
                                 type: logType,
@@ -291,11 +278,7 @@ const BookingsContent = () => {
                             return;
                         }
                     } else {
-                         const { error } = await supabase
-                            .from('bookings')
-                            .update({ state: newState })
-                            .eq('id', bookingId);
-                         if (error) throw error;
+                         upsertBookings([await updateBooking(bookingId, { state: newState })])
                          
                          await logEvent('state_change', {
                              type: logType,
@@ -308,11 +291,7 @@ const BookingsContent = () => {
                     }
                 } else {
                     // Group end only updates state, not individual timings.
-                    const { error } = await supabase
-                        .from('bookings')
-                        .update({ state: newState })
-                        .eq('bulk_booking_id', booking.bulk_booking_id);
-                    if (error) throw error;
+                    upsertBookings(await updateBookingGroup(booking.bulk_booking_id!, { state: newState }))
                     
                     await logEvent('state_change', {
                         type: logType,
@@ -326,11 +305,7 @@ const BookingsContent = () => {
             }
 
             if (scope === 'group') {
-                const { error } = await supabase
-                    .from('bookings')
-                    .update({ state: newState })
-                    .eq('bulk_booking_id', booking.bulk_booking_id);
-                if (error) throw error;
+                upsertBookings(await updateBookingGroup(booking.bulk_booking_id!, { state: newState }))
                  
                  await logEvent('state_change', {
                     type: logType,
@@ -340,11 +315,7 @@ const BookingsContent = () => {
 
                  showToast("Success", `Group ${newState.toLowerCase()}`, "success");
             } else {
-                const { error } = await supabase
-                    .from('bookings')
-                    .update({ state: newState })
-                    .eq('id', bookingId);
-                if (error) throw error;
+                upsertBookings([await updateBooking(bookingId, { state: newState })])
 
                  await logEvent('state_change', {
                     type: logType,
@@ -353,7 +324,7 @@ const BookingsContent = () => {
                  });
                  showToast("Success", `Booking ${newState.toLowerCase()}`, "success");
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Quick action failed", err);
             showToast("Error", "Failed to update booking", "error");
         }
@@ -374,10 +345,29 @@ const BookingsContent = () => {
                 lateCount={statusCounts.late}
                 overdueCount={statusCounts.overdue}
                 onFilterClick={handleFilterClick}
+                syncState={syncState}
+                lastSyncedAt={lastSyncedAt}
+                onRefresh={() => {
+                    void refreshDate(selectedDateKey).catch(() => {
+                        showToast('Refresh failed', 'Bookings could not be refreshed. Existing data is still shown.', 'error')
+                    })
+                }}
             />
         );
         return () => setHeaderContent(null);
-    }, [selectedDate, currentUser, setHeaderContent, handleBookClick, statusCounts, handleFilterClick]);
+    }, [
+        selectedDate,
+        selectedDateKey,
+        currentUser,
+        setHeaderContent,
+        handleBookClick,
+        statusCounts,
+        handleFilterClick,
+        syncState,
+        lastSyncedAt,
+        refreshDate,
+        showToast,
+    ]);
 
     return (
         <StyledPageContainer>
@@ -385,13 +375,16 @@ const BookingsContent = () => {
                 <StyledGridContainer>
                     <BookingGrid
                         selectedDate={selectedDate}
+                        rooms={rooms}
+                        bookings={bookings}
+                        openingHours={operationHours}
+                        loading={referenceLoading || !dateReady || isDateLoading(selectedDateKey)}
+                        refreshing={isDateRefreshing(selectedDateKey)}
                         onCellClick={handleCellClick}
                         onBookingClick={handleBookingClick}
                         onQuickAction={handleQuickAction}
                         onStatusCountsChange={handleStatusCountsChange}
                         highlightedBookingId={highlightedBookingId}
-                        refreshTrigger={refreshGridTrigger}
-                        showToast={showToast}
                     />
                 </StyledGridContainer>
                 <SearchPanel 
@@ -401,6 +394,8 @@ const BookingsContent = () => {
                         setInitialSearchFilter(null);
                     }} 
                     selectedDate={selectedDate}
+                    bookings={bookings}
+                    loading={isDateLoading(selectedDateKey)}
                     onBookingSelect={handleBookingSelect}
                     showToast={showToast}
                     initialFilter={initialSearchFilter}
@@ -414,7 +409,6 @@ const BookingsContent = () => {
                 prefill={panelData}
                 defaultStaffName={currentUser}
                 showToast={showToast}
-                onBookingUpdate={() => setRefreshGridTrigger(prev => prev + 1)}
                 rooms={rooms}
                 courses={courses}
                 creationStartTime={creationStartTime}
@@ -431,9 +425,11 @@ const BookingsContent = () => {
 const Bookings = () => {
     return (
         <ConfirmDialogProvider>
-            <NowProvider>
-                <BookingsContent />
-            </NowProvider>
+            <BookingsDataProvider>
+                <NowProvider>
+                    <BookingsContent />
+                </NowProvider>
+            </BookingsDataProvider>
         </ConfirmDialogProvider>
     );
 };

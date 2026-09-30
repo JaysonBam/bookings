@@ -3,6 +3,7 @@
  */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import timeLib from "../../../lib/time";
+import { useBookingsData } from './BookingsDataContext'
 
 interface NowContextType {
     currentTime: Date;
@@ -12,8 +13,10 @@ const NowContext = createContext<NowContextType>({ currentTime: new Date() });
 
 export const NowProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [currentTime, setCurrentTime] = useState<Date>(new Date());
+    const { referenceLoading } = useBookingsData()
 
     useEffect(() => {
+        if (referenceLoading) return
         const tick = async () => {
             const time = await timeLib.getTime();
             setCurrentTime(time);
@@ -21,7 +24,7 @@ export const NowProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tick(); // initial
         const interval = setInterval(tick, 1000 * 60); // Every minute
         return () => clearInterval(interval);
-    }, []);
+    }, [referenceLoading]);
 
     return (
         <NowContext.Provider value={{ currentTime }}>

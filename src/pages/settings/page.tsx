@@ -1,8 +1,12 @@
 /**
  * Purpose: Module logic for pages\settings\page.tsx.
  */
-import { useState, useEffect } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { deleteRooms, getRooms, insertRooms, upsertRooms } from '../../api/supabase/rooms'
+import { deleteCourses, getCourses, insertCourses, upsertCourses } from '../../api/supabase/courses'
+import { getSettings, saveSettings } from '../../api/supabase/settings'
+import { getErrorMessage } from '../../api/supabase/errors'
+import { setTestingClockCache } from '../../lib/time'
 import {
   Box,
   Typography,
@@ -51,6 +55,8 @@ type CourseRow = {
   color_hex?: string | null;
 };
 
+type NewRoomPayload = Omit<RoomRow, 'id'>;
+
 export default function SettingsPage() {
   const { setHeaderContent } = useLayout();
   
@@ -65,6 +71,8 @@ export default function SettingsPage() {
   const [deletedCourseIds, setDeletedCourseIds] = useState<number[]>([]);
   
   const [borrowableInputs, setBorrowableInputs] = useState<Record<number, string>>({});
+  const baselineRooms = useRef<RoomRow[]>([])
+  const baselineCourses = useRef<CourseRow[]>([])
 
   const [opStart, setOpStart] = useState("08:00");
   const [opEnd, setOpEnd] = useState("17:00");
@@ -81,74 +89,83 @@ export default function SettingsPage() {
     severity: "success",
   });
 
+  const handleCloseSnackbar = () => setSnackbar({ ...snackbar, open: false });
+
+  const fetchRooms = useCallback(async () => {
+    setLoadingRooms(true);
+    try {
+      const rows = (await getRooms() as RoomRow[]).sort((a, b) => a.name.localeCompare(b.name));
+      setRooms(rows);
+      baselineRooms.current = rows
+      const borrowMap: Record<number, string> = {};
+      rows.forEach((r) => { borrowMap[r.id] = (r.borrowable_items ?? []).join(", "); });
+      setBorrowableInputs(borrowMap);
+    } catch (error) {
+      setSnackbar({ open: true, message: "Failed to load rooms: " + getErrorMessage(error), severity: "error" });
+    } finally {
+      setLoadingRooms(false);
+    }
+  }, [])
+
+  const fetchCourses = useCallback(async () => {
+    setLoadingCourses(true);
+    try {
+      const rows = (await getCourses() as CourseRow[]).sort((a, b) => a.name.localeCompare(b.name))
+      setCourses(rows)
+      baselineCourses.current = rows
+    } catch (error) {
+      setSnackbar({ open: true, message: "Failed to load courses: " + getErrorMessage(error), severity: "error" });
+    } finally {
+      setLoadingCourses(false);
+    }
+  }, [])
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const rows = await getSettings(['operation_hours', 'saturday_hours', 'testing_clock'])
+      const byKey = new Map(rows.map((row) => [row.key, row.value]))
+      const hoursData = byKey.get('operation_hours')
+      if (hoursData && typeof hoursData === 'object') {
+        const v = hoursData as { start?: string; end?: string };
+        if (v.start) setOpStart(v.start);
+        if (v.end) setOpEnd(v.end);
+      }
+
+      const satData = byKey.get('saturday_hours')
+      if (satData && typeof satData === 'object') {
+        const v = satData as { enabled?: boolean; start?: string; end?: string };
+        if (typeof v.enabled === "boolean") setSatEnabled(v.enabled);
+        if (v.start) setSatStart(v.start);
+        if (v.end) setSatEnd(v.end);
+      }
+
+      const testData = byKey.get('testing_clock')
+      if (testData && typeof testData === 'object') {
+        const v = testData as { enabled?: boolean; date?: string; time?: string };
+        if (typeof v.enabled === "boolean") setTestingEnabled(v.enabled);
+        if (v.date) setTestingDate(v.date);
+        if (v.time) setTestingTime(v.time);
+        setTestingClockCache({ enabled: v.enabled ?? false, date: v.date, time: v.time })
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: "Failed to load settings: " + getErrorMessage(error), severity: "error" });
+    }
+  }, [])
+
+  const loadAll = useCallback(
+    () => Promise.all([fetchRooms(), fetchCourses(), fetchSettings()]),
+    [fetchCourses, fetchRooms, fetchSettings],
+  )
+
   useEffect(() => {
     setHeaderContent(
       <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 600 }}>
         System Settings
       </Typography>
     );
-    loadAll();
-  }, [setHeaderContent]);
-
-  const handleCloseSnackbar = () => setSnackbar({ ...snackbar, open: false });
-
-  async function loadAll() {
-    await Promise.all([fetchRooms(), fetchCourses(), fetchSettings()]);
-  }
-
-  async function fetchRooms() {
-    setLoadingRooms(true);
-    const { data, error } = await supabase.from("rooms").select("*");
-    setLoadingRooms(false);
-    if (error) {
-      setSnackbar({ open: true, message: "Failed to load rooms: " + error.message, severity: "error" });
-      return;
-    }
-    const rows = ((data ?? []) as RoomRow[]).sort((a, b) => a.name.localeCompare(b.name));
-    setRooms(rows);
-
-    const borrowMap: Record<number, string> = {};
-    rows.forEach((r) => {
-      borrowMap[r.id] = (r.borrowable_items ?? []).join(", ");
-    });
-    setBorrowableInputs(borrowMap);
-  }
-
-  async function fetchCourses() {
-    setLoadingCourses(true);
-    const { data, error } = await supabase.from("courses").select("*");
-    setLoadingCourses(false);
-    if (error) {
-       setSnackbar({ open: true, message: "Failed to load courses: " + error.message, severity: "error" });
-      return;
-    }
-    setCourses(((data ?? []) as CourseRow[]).sort((a, b) => a.name.localeCompare(b.name)));
-  }
-
-  async function fetchSettings() {
-    const { data: hoursData } = await supabase.from("settings").select("value").eq("key", "operation_hours").single();
-    if (hoursData?.value) {
-      const v = hoursData.value as any;
-      if (v.start) setOpStart(v.start);
-      if (v.end) setOpEnd(v.end);
-    }
-
-    const { data: satData } = await supabase.from("settings").select("value").eq("key", "saturday_hours").single();
-    if (satData?.value) {
-      const v = satData.value as any;
-      if (typeof v.enabled === "boolean") setSatEnabled(!!v.enabled);
-      if (v.start) setSatStart(v.start);
-      if (v.end) setSatEnd(v.end);
-    }
-
-    const { data: testData } = await supabase.from("settings").select("value").eq("key", "testing_clock").single();
-    if (testData?.value) {
-      const v = testData.value as any;
-      if (typeof v.enabled === "boolean") setTestingEnabled(!!v.enabled);
-      if (v.date) setTestingDate(v.date);
-      if (v.time) setTestingTime(v.time);
-    }
-  }
+    void loadAll();
+    return () => setHeaderContent(null)
+  }, [loadAll, setHeaderContent]);
 
   async function createCourse(name: string, color_hex?: string) {
     const tempId = -Date.now() - Math.floor(Math.random() * 1000);
@@ -174,14 +191,7 @@ export default function SettingsPage() {
     setRooms((s) => s.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
   }
 
-  async function createRoom(payload: {
-    name: string;
-    max_people?: number | null;
-    min_people?: number | null;
-    borrowable_items?: string[] | null;
-    dynamic_labels?: string[] | null;
-    is_available?: boolean | null;
-  }) {
+  async function createRoom(payload: NewRoomPayload) {
     const tempId = -Date.now() - Math.floor(Math.random() * 1000);
     const newRoom: RoomRow = {
       id: tempId,
@@ -199,20 +209,16 @@ export default function SettingsPage() {
   async function saveAllRooms() {
     setSavingAll(true);
     try {
-      if (deletedRoomIds.length) await supabase.from("rooms").delete().in("id", deletedRoomIds);
-      if (deletedCourseIds.length) await supabase.from("courses").delete().in("id", deletedCourseIds);
-
       const newRooms = rooms.filter((r) => r.id < 0);
       const existingRooms = rooms.filter((r) => r.id > 0);
-
-      await Promise.all(
-        existingRooms.map(async (row) => {
+      const baselineRoomMap = new Map(baselineRooms.current.map((row) => [row.id, row]))
+      const preparedExistingRooms = existingRooms.map((row) => {
           const rawBorrow = borrowableInputs[row.id];
           const parsedBorrow = rawBorrow !== undefined
               ? rawBorrow.split(",").map((s) => s.trim()).filter(Boolean)
               : row.borrowable_items ?? null;
-          
-          const payload: any = {
+          return {
+            id: row.id,
             name: row.name,
             max_people: row.max_people ?? null,
             min_people: row.min_people ?? null,
@@ -220,12 +226,21 @@ export default function SettingsPage() {
             dynamic_labels: row.dynamic_labels ?? null,
             is_available: row.is_available ?? null,
           };
-          await supabase.from("rooms").update(payload).eq("id", row.id);
+      })
+      const changedRooms = preparedExistingRooms.filter((row) => {
+        const baseline = baselineRoomMap.get(row.id)
+        if (!baseline) return true
+        return JSON.stringify(row) !== JSON.stringify({
+          id: baseline.id,
+          name: baseline.name,
+          max_people: baseline.max_people ?? null,
+          min_people: baseline.min_people ?? null,
+          borrowable_items: baseline.borrowable_items?.length ? baseline.borrowable_items : null,
+          dynamic_labels: baseline.dynamic_labels ?? null,
+          is_available: baseline.is_available ?? null,
         })
-      );
-
-      if (newRooms.length) {
-        const insertPayloads = newRooms.map((row) => {
+      })
+      const insertPayloads = newRooms.map((row) => {
           const rawBorrow = borrowableInputs[row.id];
           const parsedBorrow = rawBorrow !== undefined
               ? rawBorrow.split(",").map((s) => s.trim()).filter(Boolean)
@@ -238,38 +253,39 @@ export default function SettingsPage() {
             dynamic_labels: row.dynamic_labels ?? null,
             is_available: row.is_available ?? null,
           };
-        });
-        await supabase.from("rooms").insert(insertPayloads);
-      }
+      });
 
       const newCourses = courses.filter((c) => c.id < 0);
       const existingCourses = courses.filter((c) => c.id > 0);
-
-      await Promise.all(
-        existingCourses.map(async (course) => {
-           await supabase.from("courses").update({ name: course.name, color_hex: course.color_hex ?? null }).eq("id", course.id);
-        })
-      );
-
-      if (newCourses.length) {
-         await supabase.from("courses").insert(newCourses.map((c) => ({ name: c.name, color_hex: c.color_hex ?? null })));
-      }
-
+      const baselineCourseMap = new Map(baselineCourses.current.map((course) => [course.id, course]))
+      const changedCourses = existingCourses.filter((course) => {
+        const baseline = baselineCourseMap.get(course.id)
+        return !baseline || baseline.name !== course.name || (baseline.color_hex ?? null) !== (course.color_hex ?? null)
+      })
       const hoursPayload = { start: opStart, end: opEnd };
-      await supabase.from("settings").upsert({ key: "operation_hours", value: hoursPayload });
-
       const satPayload = { enabled: satEnabled, start: satStart, end: satEnd };
-      await supabase.from("settings").upsert({ key: "saturday_hours", value: satPayload });
-
       const testingPayload = { enabled: testingEnabled, date: testingDate, time: testingTime };
-      await supabase.from("settings").upsert({ key: "testing_clock", value: testingPayload });
 
-      await Promise.all([fetchRooms(), fetchCourses()]);
+      await Promise.all([
+        deleteRooms(deletedRoomIds),
+        deleteCourses(deletedCourseIds),
+        upsertRooms(changedRooms),
+        insertRooms(insertPayloads),
+        upsertCourses(changedCourses),
+        insertCourses(newCourses.map((course) => ({ name: course.name, color_hex: course.color_hex ?? null }))),
+        saveSettings([
+          { key: 'operation_hours', value: hoursPayload },
+          { key: 'saturday_hours', value: satPayload },
+          { key: 'testing_clock', value: testingPayload },
+        ]),
+      ])
+      setTestingClockCache(testingPayload)
+      await Promise.all([fetchRooms(), fetchCourses(), fetchSettings()]);
       setDeletedRoomIds([]);
       setDeletedCourseIds([]);
       setSnackbar({ open: true, message: "All settings saved successfully", severity: "success" });
-    } catch (err: any) {
-      setSnackbar({ open: true, message: "Error saving settings: " + err.message, severity: "error" });
+    } catch (err: unknown) {
+      setSnackbar({ open: true, message: "Error saving settings: " + getErrorMessage(err), severity: "error" });
     } finally {
       setSavingAll(false);
     }
@@ -583,7 +599,7 @@ export default function SettingsPage() {
   );
 }
 
-function NewRoomRow({ onCreate }: { onCreate: (payload: any) => Promise<void> }) {
+function NewRoomRow({ onCreate }: { onCreate: (payload: NewRoomPayload) => Promise<void> }) {
   const [name, setName] = useState("");
   const [maxPeople, setMaxPeople] = useState<string>("");
   const [minPeople, setMinPeople] = useState<string>("");

@@ -8,7 +8,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function getBookingSoftState(booking: any, now: Date): 'late' | 'overdue' | null {
+type SoftStateBooking = {
+  state?: string
+  start_time: string
+  end_time: string
+}
+
+export function getBookingSoftState(booking: SoftStateBooking | null | undefined, now: Date): 'late' | 'overdue' | null {
   if (!booking) return null;
   
   const start = new Date(booking.start_time);

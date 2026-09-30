@@ -2,8 +2,10 @@
  * Purpose: Module logic for pages\report\page.tsx.
  */
 import { useState, useEffect } from "react";
-import { supabase } from "../../lib/supabaseClient";
-import * as XLSX from "xlsx";
+import type { WorkSheet } from 'xlsx'
+import { getBookingsPage } from '../../api/supabase/bookings'
+import { getRooms } from '../../api/supabase/rooms'
+import { getCourses } from '../../api/supabase/courses'
 import {
   Box,
   Typography,
@@ -26,6 +28,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import SchoolIcon from '@mui/icons-material/School';
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom';
+import type { ReportBookingRow } from '../../api/supabase/types'
 
 export default function ReportPage() {
   const { setHeaderContent } = useLayout();
@@ -68,22 +71,15 @@ export default function ReportPage() {
       const endD = new Date(parseInt(year), parseInt(month), 0);
       const endDate = format(endD, "yyyy-MM-dd");
 
-      let allBookings: any[] = [];
+      let allBookings: ReportBookingRow[] = [];
       let from = 0;
       let to = 999;
       let hasMore = true;
+      const referenceDataPromise = Promise.all([getRooms(), getCourses()])
 
       while (hasMore) {
         // Page through bookings to avoid large one-shot reads.
-        const { data: bookings, error: bookingsError } = await supabase
-          .from("bookings")
-          .select("*")
-          .gte("booking_day", startDate)
-          .lte("booking_day", endDate)
-          .range(from, to)
-          .order("booking_day", { ascending: true });
-
-        if (bookingsError) throw bookingsError;
+        const bookings = await getBookingsPage(startDate, endDate, from, to)
         
         if (bookings && bookings.length > 0) {
           allBookings = [...allBookings, ...bookings];
@@ -98,24 +94,12 @@ export default function ReportPage() {
         }
       }
       const bookings = allBookings;
+      const [rooms, courses] = await referenceDataPromise
 
       if (bookings.length === 0) {
         showMessage("No bookings found for the selected month.", "error");
-        setLoading(false);
         return;
       }
-
-      const { data: rooms, error: roomsError } = await supabase
-        .from("rooms")
-        .select("id, name");
-
-      if (roomsError) throw roomsError;
-
-      const { data: courses, error: coursesError } = await supabase
-        .from("courses")
-        .select("id, name");
-
-      if (coursesError) throw coursesError;
 
       const roomMap = new Map(rooms?.map((r) => [r.id, r.name]));
       const courseMap = new Map(courses?.map((c) => [c.id, c.name]));
@@ -128,16 +112,19 @@ export default function ReportPage() {
 
       const sanitizeExcel = (str: string) => {
         if (!str) return "";
-        return str.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+        return Array.from(str).filter((character) => {
+          const code = character.charCodeAt(0)
+          return code >= 32 || code === 9 || code === 10 || code === 13
+        }).join("");
       };
 
-      const groupedBookings = new Map<string, any[]>();
+      const groupedBookings = new Map<string, ReportBookingRow[]>();
       
       bookings?.forEach((booking) => {
         // Merge multi-room records that belong to the same bulk timeslot.
         const key = booking.bulk_booking_id 
           ? `${booking.bulk_booking_id}_${booking.booking_day}_${booking.start_time}`
-          : booking.id;
+          : String(booking.id);
           
         if (!groupedBookings.has(key)) {
           groupedBookings.set(key, []);
@@ -148,7 +135,7 @@ export default function ReportPage() {
       const rawData = Array.from(groupedBookings.values()).map((group) => {
         const mainBooking = group[0];
         const roomNames = group
-          .map((b: any) => roomMap.get(b.room_id) || `Room ${b.room_id}`)
+          .map((b) => roomMap.get(b.room_id) || `Room ${b.room_id}`)
           .sort()
           .join(", ");
           
@@ -192,7 +179,7 @@ export default function ReportPage() {
           "End Time": endTime,
           "Duration (Hours)": Number(duration.toFixed(2)),
           "Booked By": sanitizeExcel(mainBooking.booked_by),
-          "Student Numbers": mainBooking.bulk_booking_id ? "" : sanitizeExcel(mainBooking.student_numbers),
+          "Student Numbers": mainBooking.bulk_booking_id ? "" : sanitizeExcel(mainBooking.student_numbers ?? ""),
           "Student Count": studentCount,
         };
       });
@@ -258,6 +245,7 @@ export default function ReportPage() {
         }))
         .sort((a, b) => a.Course.localeCompare(b.Course));
 
+      const XLSX = await import('xlsx')
       const wb = XLSX.utils.book_new();
 
       const ws1 = XLSX.utils.json_to_sheet(rawData || [], { cellDates: true });
@@ -299,7 +287,7 @@ export default function ReportPage() {
 
       XLSX.utils.book_append_sheet(wb, ws1, "Raw Data");
 
-      const formatStatSheet = (ws: XLSX.WorkSheet) => {
+      const formatStatSheet = (ws: WorkSheet) => {
         if (!ws['!ref']) return;
         const range = XLSX.utils.decode_range(ws['!ref']);
         for (let R = range.s.r + 1; R <= range.e.r; ++R) {
@@ -322,7 +310,7 @@ export default function ReportPage() {
       formatStatSheet(ws3);
       XLSX.utils.book_append_sheet(wb, ws3, "Course Stats");
 
-      const setColWidth = (ws: XLSX.WorkSheet, data: any[]) => {
+      const setColWidth = (ws: WorkSheet, data: Array<Record<string, unknown>>) => {
         if (data.length === 0) return;
         // Size each column to the longest value in that column.
         const cols = Object.keys(data[0]).map((key) => {
@@ -346,9 +334,9 @@ export default function ReportPage() {
       XLSX.writeFile(wb, `Booking_Report_${selectedMonth}.xlsx`);
 
       showMessage("Reports generated and downloaded successfully.", "success");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error generating reports:", error);
-      showMessage(error.message || "Failed to generate reports.", "error");
+      showMessage(error instanceof Error ? error.message : "Failed to generate reports.", "error");
     } finally {
       setLoading(false);
     }

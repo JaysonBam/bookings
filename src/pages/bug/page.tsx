@@ -1,8 +1,9 @@
 /**
  * Purpose: Module logic for pages\bug\page.tsx.
  */
-import { useState, useEffect, FormEvent } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { useState, useEffect, useCallback, FormEvent } from "react";
+import type { ChipProps } from '@mui/material'
+import { createBug, getBugs, upvoteBug } from '../../api/supabase/bugs'
 import {
   Box,
   Typography,
@@ -46,7 +47,7 @@ export default function BugPage() {
   const { setHeaderContent } = useLayout();
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<string>("not_fixed");
+  const [filterStatus, setFilterStatus] = useState<'all' | 'not_fixed' | Bug['status']>("not_fixed");
   
   const [description, setDescription] = useState("");
   const [reporterName, setReporterName] = useState("");
@@ -60,33 +61,21 @@ export default function BugPage() {
 
   const handleCloseSnackbar = () => setSnackbar({...snackbar, open: false});
 
-  const showMessage = (message: string, severity: 'success' | 'error') => {
+  const showMessage = useCallback((message: string, severity: 'success' | 'error') => {
       setSnackbar({ open: true, message, severity });
-  };
+  }, []);
 
-  const fetchBugs = async () => {
+  const fetchBugs = useCallback(async () => {
     setLoading(true);
-    let query = supabase
-      .from("bugs")
-      .select("*")
-      .order("upvotes", { ascending: false });
-
-    if (filterStatus === "not_fixed") {
-      query = query.in("status", ["new", "acknowledged"]);
-    } else if (filterStatus !== "all") {
-      query = query.eq("status", filterStatus);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
+    try {
+      const data = await getBugs(filterStatus)
+      setBugs(data || []);
+    } catch (error) {
       console.error("Error fetching bugs:", error);
       showMessage("Failed to load bugs.", "error");
-    } else {
-      setBugs(data || []);
     }
     setLoading(false);
-  };
+  }, [filterStatus, showMessage]);
 
   useEffect(() => {
     setHeaderContent(
@@ -95,11 +84,11 @@ export default function BugPage() {
       </Typography>
     );
     return () => setHeaderContent(null);
-  }, []);
+  }, [setHeaderContent]);
 
   useEffect(() => {
-    fetchBugs();
-  }, [filterStatus]);
+    void fetchBugs();
+  }, [fetchBugs]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -109,40 +98,34 @@ export default function BugPage() {
     }
 
     setSubmitting(true);
-    const { error } = await supabase.from("bugs").insert([
-      {
-        description: description.trim(),
-        reporter_name: reporterName.trim(),
-      },
-    ]);
-
-    if (error) {
+    try {
+      await createBug(description.trim(), reporterName.trim())
+    } catch (error) {
         console.error("Error reporting bug:", error);
         showMessage("Failed to report bug.", "error");
-    } else {
+        setSubmitting(false)
+        return
+    }
         showMessage("Bug reported successfully.", "success");
         setDescription("");
         setReporterName("");
         fetchBugs();
-    }
     setSubmitting(false);
   };
 
   const handleUpvote = async (bugId: number) => {
-    const { error } = await supabase.rpc("increment_bug_upvotes", {
-      bug_id: bugId,
-    });
-
-    if (error) {
+    try {
+      await upvoteBug(bugId)
+    } catch (error) {
       console.error("Error upvoting:", error);
       showMessage("Failed to upvote.", "error");
-    } else {
+      return
+    }
       showMessage("Thank you for your feedback!", "success");
       fetchBugs();
-    }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: Bug['status']): ChipProps['color'] => {
     switch (status) {
       case "fixed":
         return "success";
@@ -229,7 +212,7 @@ export default function BugPage() {
                 <Select
                     value={filterStatus}
                     label="Filter by status"
-                    onChange={(e) => setFilterStatus(e.target.value)}
+                    onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
                 >
                     <MenuItem value="not_fixed">New & Acknowledged</MenuItem>
                     <MenuItem value="all">All Statuses</MenuItem>
@@ -279,7 +262,7 @@ export default function BugPage() {
                                 <TableCell>
                                     <Chip 
                                         label={bug.status} 
-                                        color={getStatusColor(bug.status) as any} 
+                                        color={getStatusColor(bug.status)}
                                         size="small" 
                                         variant="outlined"
                                         sx={{ textTransform: 'capitalize' }}

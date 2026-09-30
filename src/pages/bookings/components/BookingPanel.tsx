@@ -10,28 +10,41 @@ import {
     FormHelperText
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
-import { supabase } from "../../../lib/supabaseClient";
+import {
+    createBooking,
+    createBookings,
+    deleteBooking,
+    deleteBookingGroup,
+    deleteBookings,
+    endEarlierBookings,
+    getBookingsByBulkId,
+    getUnendedBookingsBefore,
+    updateBooking,
+    updateBookingGroup,
+} from '../../../api/supabase/bookings'
 import { format, parseISO, addMinutes, eachDayOfInterval, isBefore, differenceInMinutes, isSameDay } from "date-fns";
 import timeLib from "../../../lib/time";
 import { useConfirm } from "../context/ConfirmDialogContext";
 import { useNow } from "../context/NowContext";
 import { DateInput } from "../../../components/DateInput";
 
-import { logEvent } from "../../../lib/log";
+import { logEvent, logEvents } from "../../../lib/log";
+import { useBookingsData } from '../context/BookingsDataContext'
+import type { BookingCreateDetail } from '../../../lib/log'
+import type { BookingRow, BookingUpdate, BookingWrite, CourseRow, RoomRow } from '../../../api/supabase/types'
 
 interface BookingPanelProps {
   open: boolean;
   onClose: () => void;
-  prefill?: { roomId?: string; timeSlot?: string; booking?: any } | null;
+  prefill?: { roomId?: string; timeSlot?: string; booking?: BookingRow } | null;
   defaultStaffName?: string;
   showToast?: (title: string, description: string, severity?: "success" | "error" | "info") => void;
-  onBookingUpdate?: () => void;
-  rooms: any[];
-  courses: any[];
+  rooms: RoomRow[];
+  courses: CourseRow[];
   creationStartTime?: number | null;
 }
 
-export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefill = null, defaultStaffName = "", showToast = () => {}, onBookingUpdate, rooms, courses, creationStartTime }) => {
+export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefill = null, defaultStaffName = "", showToast = () => {}, rooms, courses, creationStartTime }) => {
   const { confirm } = useConfirm();
   const { currentTime } = useNow();
 
@@ -45,7 +58,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const [startDate, setStartDate] = useState<string>(() => {
     if (prefill?.booking) return prefill.booking.booking_day
     if (prefill?.timeSlot) {
-        try { return format(new Date(prefill.timeSlot), "yyyy-MM-dd") } catch (e) {}
+        try { return format(new Date(prefill.timeSlot), "yyyy-MM-dd") } catch { /* Fall back to today below. */ }
     }
     return format(new Date(), "yyyy-MM-dd")
   });
@@ -53,7 +66,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const [startClock, setStartClock] = useState<string>(() => {
     if (prefill?.booking) return prefill.booking.start_time.slice(0, 5)
     if (prefill?.timeSlot) {
-        try { return format(new Date(prefill.timeSlot), "HH:mm") } catch (e) {}
+        try { return format(new Date(prefill.timeSlot), "HH:mm") } catch { /* Fall back to the rounded current time below. */ }
     }
     const now = new Date()
     now.setMinutes(Math.round(now.getMinutes() / 30) * 30)
@@ -67,7 +80,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             const e = parseISO(`${prefill.booking.booking_day}T${prefill.booking.end_time}`)
             const mins = Math.round((e.getTime() - s.getTime())/60000)
             return String(mins)
-          } catch(e) {}
+          } catch { /* Keep the duration empty when legacy data cannot be parsed. */ }
       }
       return ""
   });
@@ -80,6 +93,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   useEffect(() => {
     if (!open) {
         setIsNameManuallyTyped(false);
+        setShowSmartSelectInput(false);
+        setSmartSelectGroupSize("");
     }
   }, [open]);
 
@@ -124,11 +139,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   });
 
   const [selectedExtension, setSelectedExtension] = useState<string>("");
-  const [selectedState, setSelectedState] = useState<"Active" | "Reserved" | "Ended">(() => (prefill?.booking?.state as any) ?? "Active");
+  const [selectedState, setSelectedState] = useState<"Active" | "Reserved" | "Ended">(() => prefill?.booking?.state ?? "Active");
 
   const [borrowableItems, setBorrowableItems] = useState<string[]>(() => {
       const targetId = prefill?.booking ? String(prefill.booking.room_id) : (prefill?.roomId ?? "")
-      const r = rooms.find((x: any) => String(x.id) === targetId)
+      const r = rooms.find((x) => String(x.id) === targetId)
       return r?.borrowable_items || []
   });
 
@@ -139,23 +154,35 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         return sel;
     }
     const targetId = prefill?.roomId ?? "";
-    const r = rooms.find((x: any) => String(x.id) === targetId);
+    const r = rooms.find((x) => String(x.id) === targetId);
     (r?.borrowable_items || []).forEach((it: string) => (sel[it] = false));
     return sel;
   });
 
-  const [dayBookings, setDayBookings] = useState<any[]>([]);
+  const [dayBookings, setDayBookings] = useState<BookingRow[]>([]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
 
   const [isBulkEdit, setIsBulkEdit] = useState(false);
-  const [bulkGroupBookings, setBulkGroupBookings] = useState<any[]>([]);
+  const [bulkGroupBookings, setBulkGroupBookings] = useState<BookingRow[]>([]);
+  const {
+    operationHours: sharedOpeningHours,
+    ensureDate,
+    getBookings,
+    upsertBookings,
+    removeBookings,
+  } = useBookingsData()
+  const cachedDayBookings = useMemo(() => startDate ? getBookings(startDate) : [], [getBookings, startDate])
 
   useEffect(() => {
-      if (prefill?.booking?.bulk_booking_id) {
+      const bulkBookingId = prefill?.booking?.bulk_booking_id
+      if (bulkBookingId) {
           setIsBulkEdit(true);
           const fetchGroup = async () => {
-              const { data } = await supabase.from('bookings').select('*').eq('bulk_booking_id', prefill.booking.bulk_booking_id);
-              if (data) setBulkGroupBookings(data);
+              try {
+                  setBulkGroupBookings(await getBookingsByBulkId(bulkBookingId))
+              } catch (error) {
+                  console.error('Failed to load booking group', error)
+              }
           };
           fetchGroup();
       } else {
@@ -170,53 +197,29 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const [bulkRoomIds, setBulkRoomIds] = useState<string[]>([]);
 
   const [isSmartSelecting, setIsSmartSelecting] = useState(false);
-  const [rankedRooms, setRankedRooms] = useState<any[]>([]);
+  const [showSmartSelectInput, setShowSmartSelectInput] = useState(false);
+  const [smartSelectGroupSize, setSmartSelectGroupSize] = useState("");
+  const [isFindingRoom, setIsFindingRoom] = useState(false);
+  const [rankedRooms, setRankedRooms] = useState<RoomRow[]>([]);
   const [currentRankIndex, setCurrentRankIndex] = useState(0);
-  const [openingHours, setOpeningHours] = useState<{ start: string; end: string }>({ start: "06:00", end: "21:00" });
-
-  useEffect(() => {
-    if (!open) return;
-    const loadBackground = async () => {
-        try {
-            const { data: hoursData } = await supabase.from("settings").select("value").eq("key", "operation_hours").maybeSingle();
-            if (hoursData && hoursData.value) {
-                const val = hoursData.value as any;
-                const start = val.start ?? val.open ?? "06:00";
-                const end = val.end ?? val.close ?? "21:00";
-                setOpeningHours({ start, end });
-            }
-
-            const dateStr = startDate; 
-            if (!dateStr) return;
-
-            // Keep availability data updated without blocking panel interaction.
-            const { data: bookingsData } = await supabase
-                .from('bookings')
-                .select('id, room_id, start_time, end_time, state, booking_day')
-                .eq('booking_day', dateStr);
-            if (bookingsData) {
-                setDayBookings(bookingsData);
-            }
-        } catch(e) {
-            console.error("Background load error", e);
-            showToast("Warning", "Could not load availability data", "info");
-        }
-    };
-    loadBackground();
-  }, [open, startDate]); // Re-fetch if date changes
-
+  const openingHours = sharedOpeningHours
 
   useEffect(() => {
     if (!startDate || !open) return;
     const fetchBookings = async () => {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('id, room_id, start_time, end_time, state, booking_day')
-        .eq('booking_day', startDate);
-      if (!error && data) setDayBookings(data);
+      try {
+        setDayBookings(await ensureDate(startDate))
+      } catch (error) {
+        console.error("Background load error", error);
+        showToast("Warning", "Could not load availability data", "info");
+      }
     };
     fetchBookings();
-  }, [startDate, open]);
+  }, [startDate, open, ensureDate, showToast]);
+
+  useEffect(() => {
+    if (open && startDate) setDayBookings(cachedDayBookings)
+  }, [open, startDate, cachedDayBookings])
 
   const availableDurationOptions = useMemo(() => {
     if (!startClock) return [30];
@@ -229,14 +232,14 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const [closeH, closeM] = openingHours.end.split(':').map(Number);
     let limitMins = closeH * 60 + closeM;
     
-    const isLate = (b: any) => {
+    const isLate = (b: BookingRow) => {
         if (b.state !== 'Reserved') return false;
         if (b.booking_day !== startDate) return false;
         try {
             const bStart = parseISO(`${b.booking_day}T${b.start_time}`);
             const limit = addMinutes(bStart, 10);
             return currentTime > limit;
-        } catch (e) { return false; }
+        } catch { return false; }
     };
 
     for (const b of dayBookings) {
@@ -332,7 +335,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setSelectedBorrowed((s) => ({ ...s, [item]: !s[item] }));
   };
 
-  const getOptimalRooms = (groupSize: number, allRooms: any[], bookings: any[], targetDate: Date, currentTime: Date) => {
+  const getOptimalRooms = (groupSize: number, allRooms: RoomRow[], bookings: BookingRow[], targetDate: Date, currentTime: Date) => {
       // Rank rooms by fit, availability quality, maintenance load, then name.
       const validRooms = allRooms.filter(r => (r.max_people || 0) >= groupSize);
       
@@ -341,7 +344,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
       const roomMetrics = validRooms.map(room => {
           const rId = String(room.id);
-          const roomBookings = bookings.filter((b: any) => String(b.room_id) === rId);
+          const roomBookings = bookings.filter((b) => String(b.room_id) === rId);
           
           let nextBookingStart = endOfDayMins;
           let isOccupied = false;
@@ -349,7 +352,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           let currentLateMinutes = 0;
           let isLateAvailable = false;
 
-          roomBookings.forEach((b: any) => {
+          roomBookings.forEach((b) => {
               const start = parseISO(`${b.booking_day}T${b.start_time}`);
               const end = parseISO(`${b.booking_day}T${b.end_time}`);
               const startMins = start.getHours() * 60 + start.getMinutes();
@@ -441,42 +444,42 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       return availableRooms.map(m => m.room);
   };
 
-  const handleSmartSelect = async () => {
-    const sizeStr = window.prompt("Enter Group Size:");
-    if (!sizeStr) return;
-    const size = parseInt(sizeStr, 10);
+  const handleSmartSelect = () => {
+    setSmartSelectGroupSize("");
+    setShowSmartSelectInput(true);
+  };
+
+  const confirmSmartSelect = async () => {
+    const size = Number(smartSelectGroupSize);
     if (isNaN(size) || size <= 0) {
-        showToast("Invalid size", "Please enter a number", "error");
+        showToast("Invalid size", "Please enter a whole number greater than zero", "error");
         return;
     }
 
-    let targetDate = new Date();
+    setIsFindingRoom(true);
     try {
-        targetDate = parseISO(`${startDate}T${startClock}`);
-    } catch (e) {
-    }
+      const targetDate = parseISO(`${startDate}T${startClock}`);
+      const bookings = await ensureDate(startDate)
+      setDayBookings(bookings);
 
-    const { data: bookings } = await supabase
-        .from('bookings')
-        .select('id, room_id, start_time, end_time, state, booking_day')
-        .eq('booking_day', startDate);
-        
-    if (!bookings) {
-        return;
-    }
-    setDayBookings(bookings);
+      const ranked = getOptimalRooms(size, rooms, bookings, targetDate, currentTime);
+      setShowSmartSelectInput(false);
 
-    const ranked = getOptimalRooms(size, rooms, bookings, targetDate, currentTime);
-    
-    if (ranked.length === 0) {
+      if (ranked.length === 0) {
         showToast("No rooms found", "No rooms available for smart suggestion.", "info");
         return;
-    }
+      }
 
-    setRankedRooms(ranked);
-    setCurrentRankIndex(0);
-    setRoomId(String(ranked[0].id));
-    setIsSmartSelecting(true);
+      setRankedRooms(ranked);
+      setCurrentRankIndex(0);
+      setRoomId(String(ranked[0].id));
+      setIsSmartSelecting(true);
+    } catch (error) {
+      console.error("Smart room selection failed", error);
+      showToast("Unable to find a room", "Availability could not be loaded. Please try again.", "error");
+    } finally {
+      setIsFindingRoom(false);
+    }
   };
 
   const selectNextRankedRoom = () => {
@@ -486,12 +489,13 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       setRoomId(String(rankedRooms[nextIndex].id));
   };
 
-  const mapDatabaseError = (error: any): string => {
-    if (!error) return "An unexpected error occurred";
-    if (error.code === "23P01") return "This time slot is already booked.";
-    if (error.code === "23514") return "Invalid booking time.";
-    if (error.code === "23503") return "Invalid room or course.";
-    return error.message || "Unable to complete the operation.";
+  const mapDatabaseError = (error: unknown): string => {
+    if (!error || typeof error !== 'object') return "An unexpected error occurred";
+    const candidate = error as { code?: string; message?: string }
+    if (candidate.code === "23P01") return "This time slot is already booked.";
+    if (candidate.code === "23514") return "Invalid booking time.";
+    if (candidate.code === "23503") return "Invalid room or course.";
+    return candidate.message || "Unable to complete the operation.";
   };
 
   const handleBulkGroupUpdate = async (state: "Active" | "Reserved" | "Ended") => {
@@ -500,14 +504,14 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       try {
           const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
           
-          const basePayload: any = {
+          const basePayload: BookingUpdate = {
              booked_by: staffName,
           };
 
           let studentNumbersPayload = null; // Default to null if not set
           
           if (isBulkCount && totalStudents) {
-             let uuid = prefill?.booking?.bulk_booking_id;
+             const uuid = prefill?.booking?.bulk_booking_id;
              if (uuid) {
                  studentNumbersPayload = `bulk booking - ${uuid} - ${totalStudents}`;
              } else {
@@ -545,14 +549,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
               
               const newClumpId = crypto.randomUUID();
               
-              const { error: updateError } = await supabase.from("bookings")
-                  .update({ 
+              const updatedBookings = await updateBookingGroup(prefill.booking.bulk_booking_id, {
                       state: 'Ended', 
                       end_time: format(end, "HH:mm:ss") // Ensure they end at the proper time
                   })
-                  .eq("bulk_booking_id", prefill.booking.bulk_booking_id);
-                  
-              if (updateError) throw updateError;
+              upsertBookings(updatedBookings)
               
               const newBookings = bulkGroupBookings.map(b => {
                   
@@ -582,8 +583,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                   };
               });
                
-             const { error: insertError } = await supabase.from("bookings").insert(newBookings);
-             if (insertError) throw insertError;
+             const insertedBookings = await createBookings(newBookings)
+             upsertBookings(insertedBookings)
              
              showToast("Extended Group", `Extended ${newBookings.length} bookings`, "success");
 
@@ -593,18 +594,15 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                    state
                };
                
-               const { error } = await supabase.from("bookings")
-                  .update(updatePayload)
-                  .eq("bulk_booking_id", prefill.booking.bulk_booking_id);
-               if (error) throw error;
+               const updatedBookings = await updateBookingGroup(prefill.booking.bulk_booking_id, updatePayload)
+               upsertBookings(updatedBookings)
                showToast("Updated Group", `Updated ${bulkGroupBookings.length} bookings to ${state}`, "success");
           }
           
           resetFormToDefaults();
-          onBookingUpdate?.();
           onClose();
 
-      } catch (err: any) {
+      } catch (err: unknown) {
            showToast("Bulk Update Failed", mapDatabaseError(err), "error");
       } finally {
           setLoading(false);
@@ -666,7 +664,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             return;
         }
 
-        const actions: any[] = [];
+        const actions: Array<{ label: string; value: string; variant: 'outlined' | 'contained' }> = [];
         
         
         if (isIndividualChange) {
@@ -689,7 +687,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             cancelText: "Cancel",
             actions: actions
         });
-        if (!result) return;
+        if (typeof result !== 'string') return;
         updateScope = result;
     }
     
@@ -746,13 +744,13 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
     const bookingsToDelete: string[] = [];
     if (!isBulkBooking) {
-        const isLate = (b: any) => {
+        const isLate = (b: BookingRow) => {
             if (b.state !== 'Reserved') return false;
             try {
                 const bStart = parseISO(`${startDate}T${b.start_time}`);
                 const limit = addMinutes(bStart, 10);
                 return currentTime > limit;
-            } catch (e) { return false; }
+            } catch { return false; }
         };
 
         const hasCollision = dayBookings.some(b => {
@@ -792,8 +790,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             if (!ok) return;
 
              setLoading(true);
-             const { error } = await supabase.from('bookings').delete().in('id', bookingsToDelete);
-             if (error) {
+             try {
+               await deleteBookings(bookingsToDelete)
+               removeBookings(bookingsToDelete)
+             } catch (error) {
                  console.error(error);
                  showToast("Error", "Failed to delete overlapping booking", "error");
                  setLoading(false);
@@ -823,38 +823,27 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       if (state === 'Active') {
          const startStr = format(start, "HH:mm:ss");
          
-         const { data: autoEndedBookings } = await supabase
-            .from('bookings')
-            .select('id, start_time, end_time, state')
-            .eq('room_id', roomId)
-            .eq('booking_day', startDate)
-            .lt('start_time', startStr)
-            .neq('state', 'Ended');
+         const autoEndedBookings = await getUnendedBookingsBefore(roomId, startDate, startStr)
 
          if (autoEndedBookings && autoEndedBookings.length > 0) {
               const exactNow = await timeLib.getTime();
-              for (const b of autoEndedBookings) {
+              await logEvents(autoEndedBookings.map((b) => {
                   const bEnd = parseISO(`${startDate}T${b.end_time}`);
                   const diffMins = isSameDay(exactNow, bEnd) ? differenceInMinutes(exactNow, bEnd) : 1000;
-                  await logEvent('state_change', {
+                  return { eventType: 'state_change' as const, detail: {
                       type: 'auto',
                       state: 'active_to_ended',
                       time: diffMins
-                  });
-              }
+                  } }
+              }))
          }
 
-         const { error: _autoEndError } = await supabase
-            .from('bookings')
-            .update({ state: 'Ended' })
-            .eq('room_id', roomId)
-            .eq('booking_day', startDate)
-            .lt('start_time', startStr)
-            .neq('state', 'Ended');
-
-          if (_autoEndError) {
-             showToast("Error", "Failed to auto-end overlapping bookings", "error");
-          }
+         try {
+           upsertBookings(await endEarlierBookings(roomId, startDate, startStr))
+         } catch (error) {
+           console.error(error)
+              showToast("Error", "Failed to auto-end overlapping bookings", "error");
+         }
       }
 
       const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
@@ -862,7 +851,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       const originalDuration = parseInt(duration, 10);
       let end = addMinutes(start, originalDuration);
       
-      let extendedEnd = addMinutes(end, extensionMins);
+      const extendedEnd = addMinutes(end, extensionMins);
 
       if (state === 'Ended' && extensionMins === 0) {
           const now = await timeLib.getTime();
@@ -875,14 +864,13 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           if (now < end) {
               if (now <= start) {
                    if (prefill?.booking) {
-                       const { error } = await supabase.from('bookings').delete().eq('id', prefill.booking.id);
-                       if (error) throw error;
+                       await deleteBooking(prefill.booking.id)
+                       removeBookings([prefill.booking.id])
                        showToast("Deleted", "Booking deleted.", "info");
                    } else {
                        showToast("Not Saved", "Booking would end before start time.", "info");
                    }
                    resetFormToDefaults();
-                   onBookingUpdate?.();
                    onClose();
                    setLoading(false);
                    return;
@@ -892,12 +880,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           }
       } else if (!prefill?.booking && extensionMins > 0) {
           end = extendedEnd; 
-      } else if (prefill?.booking && extensionMins === 0) {
       }
 
       const booking_day = startDate;
       
-      const basePayload: any = {
+      const basePayload: BookingUpdate = {
         room_id: parseInt(roomId, 10),
         booking_day,
         student_numbers: studentNumbers || null,
@@ -926,8 +913,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                  state: 'Ended'
              };
              
-             const { error: updateError } = await supabase.from("bookings").update(oldPayload).eq("id", prefill.booking.id);
-             if (updateError) throw updateError;
+             upsertBookings([await updateBooking(prefill.booking.id, oldPayload)])
 
              const exactNow = await timeLib.getTime();
              const bEnd = end;
@@ -944,8 +930,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                  state: 'Active'
              };
              
-             const { error: insertError } = await supabase.from("bookings").insert(newPayload);
-             if (insertError) throw insertError;
+             upsertBookings([await createBooking(newPayload)])
 
              await logEvent('booking_create', {
                  type: 'extension',
@@ -963,8 +948,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                 end_time: format(end, "HH:mm:ss"),
                 state,
             };
-            const { error } = await supabase.from("bookings").update(payload).eq("id", prefill.booking.id);
-            if (error) throw error;
+            upsertBookings([await updateBooking(prefill.booking.id, payload)])
 
             if (state !== prefill.booking.state) {
                  const exactNow = await timeLib.getTime();
@@ -1001,23 +985,21 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
             end_time: format(end, "HH:mm:ss"),
             state,
         };
-        const { error } = await supabase.from("bookings").insert(payload);
-        if (error) throw error;
+        upsertBookings([await createBooking(payload)])
 
         await logEvent('booking_create', {
              type: isSmartSelecting ? 'smart' : 'manual',
              rank: isSmartSelecting ? (currentRankIndex + 1) : null,
              name_entered: isNameManuallyTyped ? 'manual' : 'auto',
-             state: (state as string).toLowerCase() as any, 
+             state: state.toLowerCase() as BookingCreateDetail['state'],
              time: creationStartTime ? (Date.now() - creationStartTime) / 1000 : 0
         });
 
         showToast("Saved", "Booking created", "success");
       }
       resetFormToDefaults();
-      onBookingUpdate?.();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast("Save failed", mapDatabaseError(err), "error");
     } finally {
       setLoading(false);
@@ -1084,7 +1066,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
     setLoading(true);
     try {
-        const bookingsToInsert: any[] = [];
+        const bookingsToInsert: BookingWrite[] = [];
         for (const dateRange of validDates) {
             const startD = parseISO(dateRange.start);
             const endD = parseISO(dateRange.end);
@@ -1104,7 +1086,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                     const clumpId = crypto.randomUUID();
 
                     for (const rId of bulkRoomIds) {
-                        const payload: any = {
+                        const payload: BookingWrite = {
                             room_id: parseInt(rId, 10),
                             start_time: tStart + ":00",
                             end_time: tEnd + ":00",
@@ -1134,13 +1116,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              showToast("No bookings", "Check ranges", "info");
              return;
         }
-        const { error } = await supabase.from("bookings").insert(bookingsToInsert);
-        if (error) throw error;
+        upsertBookings(await createBookings(bookingsToInsert))
         showToast("Saved", `${bookingsToInsert.length} bookings created`, "success");
         resetFormToDefaults();
-        onBookingUpdate?.();
         onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error(err);
         showToast("Save failed", mapDatabaseError(err), "error");
     } finally {
@@ -1167,6 +1147,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setBulkTimes([{ start: "", end: "" }]);
     setBulkRoomIds([]);
     setIsSmartSelecting(false);
+    setShowSmartSelectInput(false);
+    setSmartSelectGroupSize("");
     setRankedRooms([]);
     setCurrentRankIndex(0);
     setErrors({});
@@ -1174,7 +1156,9 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
   const handleDelete = async () => {
     if (!prefill?.booking?.id) return;
-    const isGroup = isBulkEdit && prefill.booking.bulk_booking_id;
+    const booking = prefill.booking
+    const bulkBookingId = booking.bulk_booking_id
+    const isGroup = isBulkEdit && bulkBookingId;
     
     let scope = 'single';
     if (isGroup) {
@@ -1187,7 +1171,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                  { label: "Delete Entire Group", value: 'group', variant: 'contained', color: 'error' }
              ]
          });
-         if (!result) return;
+         if (typeof result !== 'string') return;
          scope = result;
     } else {
         const ok = await confirm({
@@ -1202,17 +1186,17 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setLoading(true);
     try {
       if (scope === 'group') {
-          const { error } = await supabase.from('bookings').delete().eq('bulk_booking_id', prefill.booking.bulk_booking_id);
-          if (error) throw error;
+          if (!bulkBookingId) return
+          const deleted = await deleteBookingGroup(bulkBookingId)
+          removeBookings(deleted.map((booking) => booking.id))
       } else {
-          const { error } = await supabase.from('bookings').delete().eq('id', prefill.booking.id);
-          if (error) throw error;
+          await deleteBooking(booking.id)
+          removeBookings([booking.id])
       }
       showToast("Deleted", "Booking deleted", "info");
-      onBookingUpdate?.();
       onClose();
-    } catch (err: any) {
-      showToast("Delete failed", err?.message, "error");
+    } catch (err: unknown) {
+      showToast("Delete failed", mapDatabaseError(err), "error");
     } finally {
       setLoading(false);
     }
@@ -1312,7 +1296,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         roundedCurrent.setMinutes(Math.round(roundedCurrent.getMinutes() / 30) * 30);
         roundedCurrent.setSeconds(0);
         return roundedCurrent < selectedTime;
-    } catch (e) { return false; }
+    } catch { return false; }
   }, [currentTime, startDate, startClock]);
 
   return (
@@ -1380,7 +1364,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                     ) : (
                         <>
                             <Grid item xs={12}>
-                                <Box display="flex" gap={1} alignItems="flex-start">
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'flex-start' }}>
                                     <TextField 
                                         select 
                                         fullWidth 
@@ -1388,6 +1372,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                         value={roomId} 
                                         onChange={(e) => setRoomId(e.target.value)}
                                         error={!!errors.roomId}
+                                        sx={{ flex: '1 1 220px', width: 'auto' }}
                                     >
                                         {rooms.map(r => {
                                             const status = getRoomStatus(String(r.id));
@@ -1398,7 +1383,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                                         <Typography color={status?.color || 'inherit'}>{r.name} {status?.text && `(${status.text})`}</Typography>
                                                                                                                 {r.dynamic_labels && r.dynamic_labels.length > 0 && (
                                                                                                                         <Typography sx={{ ml: 1, display: 'flex', gap: 0.5 }}>
-                                                                                                                                {r.dynamic_labels.map((l: any, idx: number) => (
+                                                                                                                                {r.dynamic_labels.map((l, idx) => (
                                                                                                                                     <span key={idx} style={{
                                                                                                                                         display: 'inline-flex',
                                                                                                                                         alignItems: 'center',
@@ -1414,10 +1399,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                                                                                                                             width: 18,
                                                                                                                                             height: 18,
                                                                                                                                             borderRadius: '50%',
-                                                                                                                                            background: '#b0b3b8',
+                                                                                                                                            background: 'currentColor',
+                                                                                                                                            opacity: 0.3,
                                                                                                                                             zIndex: 0,
                                                                                                                                         }} />
-                                                                                                                                        <span style={{ position: 'relative', zIndex: 1, color: '#222' }}>{l.split(' ').pop()}</span>
+                                                                                                                                        <span style={{ position: 'relative', zIndex: 1, color: 'inherit' }}>{l.split(' ').pop()}</span>
                                                                                                                                     </span>
                                                                                                                                 ))}
                                                                                                                         </Typography>
@@ -1428,7 +1414,38 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                         })}
                                     </TextField>
                                     {!prefill?.booking && (
-                                        isSmartSelecting ? (
+                                        showSmartSelectInput ? (
+                                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexShrink: 0 }}>
+                                                <TextField
+                                                    autoFocus
+                                                    type="number"
+                                                    label="Group size"
+                                                    value={smartSelectGroupSize}
+                                                    onChange={(event) => setSmartSelectGroupSize(event.target.value)}
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === 'Enter') void confirmSmartSelect();
+                                                        if (event.key === 'Escape') setShowSmartSelectInput(false);
+                                                    }}
+                                                    inputProps={{ min: 1, step: 1 }}
+                                                    sx={{ width: 118 }}
+                                                />
+                                                <Button
+                                                    variant="contained"
+                                                    onClick={() => void confirmSmartSelect()}
+                                                    disabled={isFindingRoom}
+                                                    sx={{ height: 56, minWidth: 72 }}
+                                                >
+                                                    {isFindingRoom ? <CircularProgress size={20} color="inherit" /> : 'Find'}
+                                                </Button>
+                                                <IconButton
+                                                    aria-label="Cancel smart selection"
+                                                    onClick={() => setShowSmartSelectInput(false)}
+                                                    sx={{ mt: 0.75 }}
+                                                >
+                                                    <CloseIcon />
+                                                </IconButton>
+                                            </Box>
+                                        ) : isSmartSelecting ? (
                                             <Button variant="outlined" onClick={selectNextRankedRoom} sx={{ height: 56, textTransform: 'none', lineHeight: 1.2, minWidth: 120, ml: 1 }}>
                                                 Next ({currentRankIndex + 1}/{rankedRooms.length})
                                             </Button>
@@ -1538,7 +1555,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                         <TextField select size="small" label="Extend" value={selectedExtension} onChange={e => setSelectedExtension(e.target.value)} sx={{ width: 120 }}>
                             {availableExtensionOptions.map(m => <MenuItem key={m} value={String(m)}>+{m} mins</MenuItem>)}
                         </TextField>
-                        <TextField select size="small" label="State" value={selectedState} onChange={e => setSelectedState(e.target.value as any)} sx={{ width: 120 }}>
+                        <TextField select size="small" label="State" value={selectedState} onChange={e => setSelectedState(e.target.value as "Active" | "Reserved" | "Ended")} sx={{ width: 120 }}>
                             <MenuItem value="Active">Active</MenuItem>
                             <MenuItem value="Reserved">Reserved</MenuItem>
                             <MenuItem value="Ended">Ended</MenuItem>

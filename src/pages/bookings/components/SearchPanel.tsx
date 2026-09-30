@@ -2,27 +2,26 @@
  * Purpose: Module logic for pages\bookings\components\SearchPanel.tsx.
  */
 import React, { useState, useEffect } from "react";
-import { format } from "date-fns";
 import { IconButton, TextField, Card, CardContent, Typography, Box, Chip, CircularProgress } from '@mui/material';
 import { Search as SearchIcon, Close as CloseIcon } from '@mui/icons-material';
-import { supabase } from "../../../lib/supabaseClient";
 import { StyledSearchPanel } from "../styles";
 import { useNow } from "../context/NowContext";
 import { getBookingSoftState } from "../utils/helpers";
+import type { BookingRow } from '../../../api/supabase/types'
 
 interface SearchPanelProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDate: Date;
+  bookings: BookingRow[];
+  loading?: boolean;
   onBookingSelect?: (bookingId: string) => void;
   showToast?: (title: string, description: string, severity?: "success" | "error" | "info") => void;
   initialFilter?: 'late' | 'overdue' | null;
 }
 
-export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selectedDate, onBookingSelect, showToast = () => {}, initialFilter = null }) => {
+export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selectedDate, bookings, loading = false, onBookingSelect, initialFilter = null }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [bookings, setBookings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const { currentTime } = useNow();
   const [filter, setFilter] = useState<'all' | 'Active' | 'Reserved' | 'Ended' | 'late' | 'overdue'>('all');
 
@@ -31,49 +30,15 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selec
       if (initialFilter) {
           setFilter(initialFilter);
       }
-      fetchBookings();
     } else {
       setFilter('all');
       setSearchQuery("");
     }
   }, [isOpen, selectedDate, initialFilter]);
 
-  const fetchBookings = async () => {
-    setLoading(true);
-    const dateStr = format(selectedDate, "yyyy-MM-dd");
-    const { data, error } = await supabase
-      .from("bookings")
-      .select(`
-        id,
-        room_id,
-        start_time,
-        end_time,
-        state,
-        student_numbers,
-        booked_by,
-        booking_day,
-        rooms (
-          name
-        )
-      `)
-      .eq("booking_day", dateStr);
-
-    if (error) {
-      console.error("Search error", error);
-      showToast("Error", "Failed to search bookings", "error");
-    } else {
-      setBookings(data || []);
-    }
-    setLoading(false);
-  };
-
   const filteredBookings = bookings.filter((booking) => {
-    if (currentTime) {
-      const bStart = `${booking.booking_day}T${booking.start_time}`;
-      const bEnd = `${booking.booking_day}T${booking.end_time}`;
-      booking.start_time_iso = bStart;
-      booking.end_time_iso = bEnd;
-    }
+    const startTimeIso = `${booking.booking_day}T${booking.start_time}`;
+    const endTimeIso = `${booking.booking_day}T${booking.end_time}`;
     let matchesSearch = true;
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -87,8 +52,8 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selec
       if (filter === 'late' || filter === 'overdue') {
         const mockBooking = {
           state: booking.state,
-          start_time: booking.start_time_iso,
-          end_time: booking.end_time_iso
+          start_time: startTimeIso,
+          end_time: endTimeIso
         };
         const soft = getBookingSoftState(mockBooking, currentTime || new Date());
         matchesFilter = soft === filter;
@@ -127,10 +92,10 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selec
         <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
           <Chip label="All" size="small" onClick={() => handleFilterClick('all')} color={filter === 'all' ? 'primary' : 'default'} variant={filter === 'all' ? 'filled' : 'outlined'} />
           <Chip label="Active" size="small" onClick={() => handleFilterClick('Active')} color="success" variant={filter === 'Active' ? 'filled' : 'outlined'} sx={filter !== 'Active' ? { color: 'success.main', borderColor: 'success.main' } : {}} />
-          <Chip label="Reserved" size="small" onClick={() => handleFilterClick('Reserved')} variant={filter === 'Reserved' ? 'filled' : 'outlined'} sx={{ bgcolor: filter === 'Reserved' ? '#fbc02d' : 'transparent', color: filter === 'Reserved' ? 'black' : '#f9a825', borderColor: filter === 'Reserved' ? 'transparent' : '#fbc02d', '&:hover': { bgcolor: filter === 'Reserved' ? '#f9a825' : 'rgba(251, 192, 45, 0.1)' } }} />
+          <Chip label="Reserved" size="small" onClick={() => handleFilterClick('Reserved')} color="warning" variant={filter === 'Reserved' ? 'filled' : 'outlined'} />
           <Chip label="Ended" size="small" onClick={() => handleFilterClick('Ended')} color="default" variant={filter === 'Ended' ? 'filled' : 'outlined'} />
-          <Chip label="Late" size="small" onClick={() => handleFilterClick('late')} sx={{ bgcolor: filter === 'late' ? '#ff9800' : 'transparent', color: filter === 'late' ? 'white' : '#ff9800', borderColor: filter === 'late' ? 'transparent' : '#ff9800', borderWidth: 1, borderStyle: 'solid', '&:hover': { bgcolor: filter === 'late' ? '#f57c00' : 'rgba(255, 152, 0, 0.1)' } }} />
-          <Chip label="Overdue" size="small" onClick={() => handleFilterClick('overdue')} sx={{ bgcolor: filter === 'overdue' ? '#f44336' : 'transparent', color: filter === 'overdue' ? 'white' : '#f44336', borderColor: filter === 'overdue' ? 'transparent' : '#f44336', borderWidth: 1, borderStyle: 'solid', '&:hover': { bgcolor: filter === 'overdue' ? '#d32f2f' : 'rgba(244, 67, 54, 0.1)' } }} />
+          <Chip label="Late" size="small" onClick={() => handleFilterClick('late')} color="warning" variant={filter === 'late' ? 'filled' : 'outlined'} />
+          <Chip label="Overdue" size="small" onClick={() => handleFilterClick('overdue')} color="error" variant={filter === 'overdue' ? 'filled' : 'outlined'} />
         </Box>
       </Box>
 
@@ -160,7 +125,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, selec
                   <Typography variant="body2" color="text.secondary">
                     {booking.start_time.slice(0, 5)} - {booking.end_time.slice(0, 5)}
                   </Typography>
-                  <Typography variant="body2" noWrap title={booking.student_numbers}>
+                  <Typography variant="body2" noWrap title={booking.student_numbers ?? undefined}>
                     {booking.student_numbers || booking.booked_by}
                   </Typography>
                 </CardContent>

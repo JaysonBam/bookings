@@ -1,30 +1,40 @@
-/**
- * Purpose: Module logic for lib\time.ts.
- */
-import { supabase } from "./supabaseClient";
+import { getSetting, saveSetting } from '../api/supabase/settings'
+import type { TestingClock } from '../api/supabase/types'
 
-export type TestingClock = {
-  enabled: boolean;
-  date?: string; // YYYY-MM-DD
-  time?: string; // HH:MM
-};
+export type { TestingClock }
 
-export async function getTestingClock(): Promise<TestingClock | null> {
+let testingClockCache: TestingClock | null = null
+let hasLoadedTestingClock = false
+let testingClockRequest: Promise<TestingClock | null> | null = null
+
+export const setTestingClockCache = (clock: TestingClock | null) => {
+  testingClockCache = clock
+  hasLoadedTestingClock = true
+}
+
+export async function getTestingClock(force = false): Promise<TestingClock | null> {
+  if (!force && hasLoadedTestingClock) return testingClockCache
+  if (!force && testingClockRequest) return testingClockRequest
+
+  testingClockRequest = (async () => {
   try {
-    const { data, error } = await supabase.from("settings").select("value").eq("key", "testing_clock").maybeSingle();
-    if (error) {
-      console.warn("getTestingClock error", error);
-    }
-    if (data?.value) return data.value as TestingClock;
-    return null;
+      const clock = await getSetting<TestingClock>('testing_clock')
+      setTestingClockCache(clock)
+      return clock
   } catch (err) {
     console.warn(err);
-    return null;
+      return testingClockCache
+    } finally {
+      testingClockRequest = null
   }
+  })()
+
+  return testingClockRequest
 }
 
 export async function setTestingClock(payload: TestingClock) {
-  await supabase.from("settings").upsert({ key: "testing_clock", value: payload });
+  await saveSetting('testing_clock', payload)
+  setTestingClockCache(payload)
 }
 
 export async function getTime(): Promise<Date> {

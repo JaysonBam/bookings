@@ -1,8 +1,8 @@
 /**
  * Purpose: Module logic for pages\maintenance\page.tsx.
  */
-import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { useCallback, useEffect, useState } from "react";
+import { getRooms, updateRoom } from '../../api/supabase/rooms'
 import {
   Box,
   Typography,
@@ -46,9 +46,21 @@ export default function MaintenancePage() {
 
   const handleCloseSnackbar = () => setSnackbar({...snackbar, open: false});
 
-  const showMessage = (message: string, severity: 'success' | 'error') => {
+  const showMessage = useCallback((message: string, severity: 'success' | 'error') => {
       setSnackbar({ open: true, message, severity });
-  };
+  }, []);
+
+  const fetchRooms = useCallback(async () => {
+    try {
+      const data = await getRooms()
+      setRooms(data.map(({ id, name, dynamic_labels }) => ({ id, name, dynamic_labels: dynamic_labels ?? null })));
+    } catch (error) {
+      console.error("Error fetching rooms:", error);
+      showMessage("Failed to load rooms", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [showMessage]);
 
   useEffect(() => {
     setHeaderContent(
@@ -60,25 +72,8 @@ export default function MaintenancePage() {
   }, [setHeaderContent]);
 
   useEffect(() => {
-    fetchRooms();
-  }, []);
-
-  const fetchRooms = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("rooms")
-        .select("id, name, dynamic_labels")
-        .order("name");
-
-      if (error) throw error;
-      setRooms(data || []);
-    } catch (error) {
-      console.error("Error fetching rooms:", error);
-      showMessage("Failed to load rooms", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
+    void fetchRooms();
+  }, [fetchRooms]);
 
   const toggleIssue = async (roomId: number, issueLabel: string, issueEmoji: string) => {
     const room = rooms.find((r) => r.id === roomId);
@@ -98,12 +93,7 @@ export default function MaintenancePage() {
     setRooms(rooms.map((r) => (r.id === roomId ? { ...r, dynamic_labels: newLabels } : r)));
 
     try {
-      const { error } = await supabase
-        .from("rooms")
-        .update({ dynamic_labels: newLabels })
-        .eq("id", roomId);
-
-      if (error) throw error;
+      await updateRoom(roomId, { dynamic_labels: newLabels })
     } catch (error) {
       console.error("Error updating room:", error);
       showMessage("Failed to update room", "error");

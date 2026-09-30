@@ -15,7 +15,7 @@ import { alpha, useTheme } from '@mui/material/styles'
 import CloseIcon from '@mui/icons-material/Close'
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined'
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
-import type { HexForgeCollectionEmailDraft } from '../lib/hexForgeCollectionClient'
+import type { HexForgeCollectionEmailDraft } from '../api/hexforge/collection'
 
 export type CollectionEmailPreviewData = {
   draft: HexForgeCollectionEmailDraft

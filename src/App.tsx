@@ -2,27 +2,28 @@
  * Purpose: Module logic for App.tsx.
  */
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { Box, Toolbar } from '@mui/material' 
-import { useEffect, useState } from 'react'
+import { Box, Button, CircularProgress, Skeleton, Toolbar, Typography } from '@mui/material'
+import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react'
 import { CustomThemeProvider } from './context/ThemeContext'
+import { SessionProvider, useSession } from './context/SessionContext'
 
 import LoginPage from './pages/login/page'
-import AboutPage from './pages/about/page'
-import BookingsPage from './pages/bookings/page'
-import CollectionsPage from './pages/collections/page'
-import AccessPage from './pages/access/page'
-import BugPage from './pages/bug/page'
-import DocumentPage from './pages/document/page'
-import MaintenancePage from './pages/maintenance/page'
-import PrivacyPolicyPage from './pages/privacy-policy/page'
-import ReportPage from './pages/report/page'
-import SettingsPage from './pages/settings/page'
-import TermsOfServicePage from './pages/terms-of-service/page'
+const AboutPage = lazy(() => import('./pages/about/page'))
+const BookingsPage = lazy(() => import('./pages/bookings/page'))
+const CollectionsPage = lazy(() => import('./pages/collections/page'))
+const AccessPage = lazy(() => import('./pages/access/page'))
+const BugPage = lazy(() => import('./pages/bug/page'))
+const DocumentPage = lazy(() => import('./pages/document/page'))
+const MaintenancePage = lazy(() => import('./pages/maintenance/page'))
+const PrivacyPolicyPage = lazy(() => import('./pages/privacy-policy/page'))
+const ReportPage = lazy(() => import('./pages/report/page'))
+const SettingsPage = lazy(() => import('./pages/settings/page'))
+const TermsOfServicePage = lazy(() => import('./pages/terms-of-service/page'))
 
 import Sidebar from './components/Sidebar'
 import Header from './components/header'
 import { LayoutProvider, useLayout } from './components/LayoutContext'
-import { supabase } from './lib/supabaseClient'
+import { signOut } from './api/supabase/auth'
 
 type User = {
   name: string
@@ -36,53 +37,25 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
   const { open, onToggle, drawerWidth } = useLayout()
   const navigate = useNavigate()
   const location = useLocation()
-  const [currentUser, setCurrentUser] = useState<User | undefined>(undefined)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const getProfile = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        navigate('/login')
-        return
-      }
-
-      if (session.user.email) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, profile_url, settings, authorisation, analytics')
-          .eq('email', session.user.email)
-          .single()
-
-        if (profile) {
-          setCurrentUser({
-            name: profile.full_name || session.user.user_metadata.full_name || 'User',
-            avatarUrl: profile.profile_url || session.user.user_metadata.avatar_url || session.user.user_metadata.picture || undefined,
-            settings: profile.settings,
-            authorisation: profile.authorisation,
-            analytics: profile.analytics,
-          })
-        }
-      } else {
-         setCurrentUser({
-             name: session.user.user_metadata.full_name || 'User',
-             avatarUrl: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || undefined,
-         })
-      }
-      setLoading(false)
-    }
-
-    getProfile()
-  }, [navigate])
+  const { session, profile, loading } = useSession()
+  const currentUser: User | undefined = session ? {
+    name: profile?.full_name || session.user.user_metadata.full_name || 'User',
+    avatarUrl: profile?.profile_url || session.user.user_metadata.avatar_url || session.user.user_metadata.picture || undefined,
+    settings: profile?.settings,
+    authorisation: profile?.authorisation,
+    analytics: profile?.analytics,
+  } : undefined
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
+    await signOut()
     navigate('/login')
   }
 
   if (loading) {
-    return null
+    return <AppShellLoading />
   }
+
+  if (!session) return <Navigate to="/login" replace />
 
   if (requiredPermission && currentUser && !currentUser[requiredPermission]) {
       return <Navigate to="/bookings" replace />
@@ -124,19 +97,71 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
           px: location.pathname === '/bookings' ? 0 : { xs: 1, md: 3 },
           pb: location.pathname === '/bookings' ? 0 : { xs: 8, md: 10 }
         }}>
-          {children}
+          <Suspense fallback={<RouteLoading />}>
+            {children}
+          </Suspense>
         </Box>
       </Box>
     </Box>
   )
 }
 
+function AppShellLoading() {
+  return (
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
+      <Box sx={{ display: { xs: 'none', md: 'block' }, width: 280, p: 2, borderRight: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
+        <Skeleton variant="rectangular" height={64} sx={{ borderRadius: 1, mb: 3 }} />
+        {[1, 2, 3, 4, 5].map((item) => <Skeleton key={item} height={44} sx={{ mb: 1 }} />)}
+      </Box>
+      <Box sx={{ flex: 1, display: 'grid', placeItems: 'center' }}>
+        <CircularProgress size={32} aria-label="Loading application" />
+      </Box>
+    </Box>
+  )
+}
+
+const RouteLoading = () => (
+  <Box sx={{ minHeight: 240, display: 'grid', placeItems: 'center' }}>
+    <CircularProgress size={30} aria-label="Loading page" />
+  </Box>
+)
+
+class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Unable to load application route', error, info)
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 3, bgcolor: 'background.default' }}>
+        <Box sx={{ textAlign: 'center', maxWidth: 420 }}>
+          <Typography variant="h6" gutterBottom>Unable to load this page</Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            The application may have been updated while it was open.
+          </Typography>
+          <Button variant="contained" onClick={() => window.location.reload()}>Reload application</Button>
+        </Box>
+      </Box>
+    )
+  }
+}
+
 
 function App() {
   return (
     <CustomThemeProvider>
-      <LayoutProvider>
-        <Routes>
+      <SessionProvider>
+        <LayoutProvider>
+          <RouteErrorBoundary>
+            <Suspense fallback={<RouteLoading />}>
+              <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/about" element={<AboutPage />} />
@@ -153,8 +178,11 @@ function App() {
           <Route path="/maintenance" element={<Layout><MaintenancePage /></Layout>} />
           <Route path="/report" element={<Layout requiredPermission="analytics"><ReportPage /></Layout>} />
           <Route path="/settings" element={<Layout requiredPermission="settings"><SettingsPage /></Layout>} />
-        </Routes>
-      </LayoutProvider>
+              </Routes>
+            </Suspense>
+          </RouteErrorBoundary>
+        </LayoutProvider>
+      </SessionProvider>
     </CustomThemeProvider>
   )
 }

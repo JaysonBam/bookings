@@ -43,7 +43,7 @@ import {
   type HexForgeCollectionBoardItem,
   type HexForgeCollectionPart,
   type HexForgeCollectionProject
-} from '../../lib/hexForgeCollectionClient'
+} from '../../api/hexforge/collection'
 import {
   boardItemFromProject,
   mergeCollectionBoardItems,

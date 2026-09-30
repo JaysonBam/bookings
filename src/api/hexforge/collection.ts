@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient'
+import { getAccessToken } from '../supabase/auth'
 
 const HEXFORGE_SUPABASE_URL = import.meta.env.VITE_HEXFORGE_SUPABASE_URL as string
 const HEXFORGE_SUPABASE_ANON_KEY = import.meta.env.VITE_HEXFORGE_SUPABASE_ANON_KEY as string
@@ -98,75 +98,45 @@ type HexForgeCollectionResponse<T> = {
   error_description?: string
 }
 
-const getBookingsAccessToken = async () => {
-  const { data, error } = await supabase.auth.getSession()
-  if (error) throw error
-  const token = data.session?.access_token
-  if (!token) throw new Error('You must be signed in to use collection tools.')
-  return token
-}
-
 const requestHexForgeCollection = async <T>(path = '', init: RequestInit = {}) => {
   if (!HEXFORGE_SUPABASE_URL || !HEXFORGE_SUPABASE_ANON_KEY) {
     throw new Error('HexForge collection access is not configured.')
   }
 
-  const token = await getBookingsAccessToken()
+  const token = await getAccessToken('You must be signed in to use collection tools.')
   const url = `${HEXFORGE_SUPABASE_URL.replace(/\/$/, '')}/functions/v1/${HEXFORGE_COLLECTION_FUNCTION}${path}`
-
   const response = await fetch(url, {
     ...init,
     headers: {
       apikey: HEXFORGE_SUPABASE_ANON_KEY,
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      ...(init.headers || {})
-    }
+      ...(init.headers || {}),
+    },
   })
-
   const payload = await response.json().catch(() => ({})) as HexForgeCollectionResponse<T>
-
   if (!response.ok) {
     throw new Error(payload.error_description || payload.error || `HexForge collection request failed (${response.status})`)
   }
-
   return payload.data as T
 }
 
-export const fetchHexForgeCollectionBoard = () =>
-  requestHexForgeCollection<HexForgeCollectionBoardItem[]>('/board')
-
-export const searchHexForgeCollection = (query: string) =>
-  requestHexForgeCollection<HexForgeCollectionBoardItem[]>(`/search?q=${encodeURIComponent(query)}`)
-
-export const fetchHexForgeCollectionProject = (projectCode: string) =>
-  requestHexForgeCollection<HexForgeCollectionProject>(`?code=${encodeURIComponent(projectCode)}`)
-
-export const saveHexForgeCollectionReceipt = (projectCode: string, receiptNumber: string) =>
-  requestHexForgeCollection<HexForgeCollectionProject>('/receipt', {
-    method: 'PATCH',
-    body: JSON.stringify({ projectCode, receiptNumber })
-  })
-
-export const collectHexForgeParts = (
-  projectCode: string,
-  partIds: string[],
-  collectorName: string,
-  collectedByStudentNumber: string
-) =>
-  requestHexForgeCollection<{ project: HexForgeCollectionProject }>('/collect', {
-    method: 'POST',
-    body: JSON.stringify({ projectCode, partIds, collectorName, collectedByStudentNumber })
-  })
-
-export const releaseHexForgeCollectionProject = (projectCode: string, printLabel?: string) =>
-  requestHexForgeCollection<{ project: HexForgeCollectionProject; warnings: string[] }>('/release', {
-    method: 'POST',
-    body: JSON.stringify({ projectCode, printLabel })
-  })
-
-export const prepareHexForgeCollectionEmail = (projectCode: string) =>
-  requestHexForgeCollection<HexForgeCollectionEmailDraft>('/email', {
-    method: 'POST',
-    body: JSON.stringify({ projectCode })
-  })
+export const fetchHexForgeCollectionBoard = () => requestHexForgeCollection<HexForgeCollectionBoardItem[]>('/board')
+export const searchHexForgeCollection = (query: string) => requestHexForgeCollection<HexForgeCollectionBoardItem[]>(`/search?q=${encodeURIComponent(query)}`)
+export const fetchHexForgeCollectionProject = (projectCode: string) => requestHexForgeCollection<HexForgeCollectionProject>(`?code=${encodeURIComponent(projectCode)}`)
+export const saveHexForgeCollectionReceipt = (projectCode: string, receiptNumber: string) => requestHexForgeCollection<HexForgeCollectionProject>('/receipt', {
+  method: 'PATCH',
+  body: JSON.stringify({ projectCode, receiptNumber }),
+})
+export const collectHexForgeParts = (projectCode: string, partIds: string[], collectorName: string, collectedByStudentNumber: string) => requestHexForgeCollection<{ project: HexForgeCollectionProject }>('/collect', {
+  method: 'POST',
+  body: JSON.stringify({ projectCode, partIds, collectorName, collectedByStudentNumber }),
+})
+export const releaseHexForgeCollectionProject = (projectCode: string, printLabel?: string) => requestHexForgeCollection<{ project: HexForgeCollectionProject; warnings: string[] }>('/release', {
+  method: 'POST',
+  body: JSON.stringify({ projectCode, printLabel }),
+})
+export const prepareHexForgeCollectionEmail = (projectCode: string) => requestHexForgeCollection<HexForgeCollectionEmailDraft>('/email', {
+  method: 'POST',
+  body: JSON.stringify({ projectCode }),
+})

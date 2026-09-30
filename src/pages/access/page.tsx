@@ -35,13 +35,13 @@ import AddIcon from '@mui/icons-material/Add'
 import { useTheme } from '@mui/material/styles'
 import { styles as makeStyles } from './styles'
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../../lib/supabaseClient'
+import { addProfile, deleteProfile, getProfiles, updateProfile } from '../../api/supabase/profiles'
 import {
   addHexForgeProfile,
   deleteHexForgeProfile,
   fetchHexForgeProfiles as fetchHexForgeProfilesFromApi,
   type HexForgeProfile
-} from '../../lib/hexForgeAccessClient'
+} from '../../api/hexforge/access'
 
 type Profile = {
   email: string
@@ -92,13 +92,7 @@ export default function AccessPage() {
 
   const fetchProfiles = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('email')
-      
-      if (error) throw error
-      setProfiles(data || [])
+      setProfiles(await getProfiles())
     } catch (error) {
       console.error('Error fetching profiles:', error)
       showToast('Failed to load user profiles', 'error')
@@ -131,12 +125,7 @@ export default function AccessPage() {
         p.email === email ? { ...p, [field]: !currentValue } : p
       ))
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({ [field]: !currentValue })
-        .eq('email', email)
-
-      if (error) throw error
+      await updateProfile(email, { [field]: !currentValue })
     } catch (error) {
       console.error('Error updating permission:', error)
       showToast('Failed to update permission', 'error')
@@ -150,12 +139,7 @@ export default function AccessPage() {
     try {
       setProfiles(prev => prev.filter(p => p.email !== email))
       
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('email', email)
-
-      if (error) throw error
+      await deleteProfile(email)
       showToast('User removed successfully', 'success')
     } catch (error) {
       console.error('Error deleting user:', error)
@@ -170,14 +154,7 @@ export default function AccessPage() {
     setAdding(true)
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .insert([{ email: newEmail, status: 'pending' }])
-
-      if (error) {
-        if (error.code === '23505') throw new Error('User already exists')
-        throw error
-      }
+      await addProfile(newEmail)
 
       showToast('User added successfully', 'success')
       setNewEmail('')

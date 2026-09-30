@@ -33,6 +33,13 @@ CREATE TABLE public.bookings (
   )
 );
 
+CREATE INDEX bookings_booking_day_start_time_id_idx
+  ON public.bookings (booking_day, start_time, id);
+
+CREATE INDEX bookings_bulk_booking_id_day_time_idx
+  ON public.bookings (bulk_booking_id, booking_day, start_time)
+  WHERE bulk_booking_id IS NOT NULL;
+
 -- 1. Enable RLS
 ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bookings FORCE ROW LEVEL SECURITY;

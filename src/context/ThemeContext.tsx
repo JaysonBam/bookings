@@ -2,7 +2,7 @@
  * Purpose: Module logic for context\ThemeContext.tsx.
  */
 import { createContext, useContext, useMemo, useState, useEffect, ReactNode } from 'react'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
+import { ThemeProvider, createTheme, type ThemeOptions } from '@mui/material/styles'
 import { CssBaseline, useMediaQuery } from '@mui/material'
 
 type ColorMode = 'light' | 'dark'
@@ -19,7 +19,7 @@ const ColorModeContext = createContext<ColorModeContextType>({
 
 export const useColorMode = () => useContext(ColorModeContext)
 
-const getDesignTokens = (mode: ColorMode) => ({
+const getDesignTokens = (mode: ColorMode): ThemeOptions => ({
   palette: {
     mode,
     ...(mode === 'light'
@@ -172,7 +172,7 @@ export function CustomThemeProvider({ children }: { children: ReactNode }) {
     [mode],
   )
 
-  const theme = useMemo(() => createTheme(getDesignTokens(mode) as any), [mode])
+  const theme = useMemo(() => createTheme(getDesignTokens(mode)), [mode])
 
   return (
     <ColorModeContext.Provider value={colorMode}>
