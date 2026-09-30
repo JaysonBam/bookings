@@ -11,6 +11,7 @@ create table public.profiles (
   profile_url text,
 
   status public.profile_status not null default 'pending',
+  access_expires_at timestamptz, -- NULL = Never; past dates = inactive.
 
   primary key (email),
 
@@ -20,6 +21,9 @@ create table public.profiles (
 );
 
 alter table public.profiles enable row level security;
+
+-- Expiry guards, protected access fields and server-clock duration RPC are defined
+-- in migrations/20260930160000_user_access_expiry.sql; apply that migration too.
 
 -- HELPER FUNCTION TO PREVENT RLS RECURSION
 -- This function runs with "security definer" privileges, bypassing RLS checks

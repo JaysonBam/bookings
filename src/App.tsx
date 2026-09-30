@@ -23,6 +23,7 @@ import Sidebar from './components/Sidebar'
 import Header from './components/header'
 import { LayoutProvider, useLayout } from './components/LayoutContext'
 import { supabase } from './lib/supabaseClient'
+import { hasProfileAccess } from './lib/accessExpiry'
 
 type User = {
   name: string
@@ -40,47 +41,78 @@ function Layout({ children, requiredPermission }: { children: React.ReactNode, r
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let cancelled = false
+    let checking = false
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined
     const getProfile = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        navigate('/login')
-        return
-      }
-
-      if (session.user.email) {
-        const { data: profile } = await supabase
+      if (checking || cancelled) return
+      checking = true
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        const { data: profile, error } = session?.user.email && !sessionError ? await supabase
           .from('profiles')
-          .select('full_name, profile_url, settings, authorisation, analytics')
+          .select('full_name, profile_url, settings, authorisation, analytics, access_expires_at')
           .eq('email', session.user.email)
-          .single()
-
-        if (profile) {
-          setCurrentUser({
-            name: profile.full_name || session.user.user_metadata.full_name || 'User',
-            avatarUrl: profile.profile_url || session.user.user_metadata.avatar_url || session.user.user_metadata.picture || undefined,
-            settings: profile.settings,
-            authorisation: profile.authorisation,
-            analytics: profile.analytics,
-          })
+          .single() : { data: null, error: null }
+        if (cancelled) return
+        if (!session || !profile || error || !hasProfileAccess(profile)) {
+          setCurrentUser(undefined)
+          setLoading(true)
+          navigate('/login', { replace: true })
+          if (session) await supabase.auth.signOut({ scope: 'local' })
+          return
         }
-      } else {
-         setCurrentUser({
-             name: session.user.user_metadata.full_name || 'User',
-             avatarUrl: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || undefined,
-         })
+
+        setCurrentUser({
+          name: profile.full_name || session.user.user_metadata.full_name || 'User',
+          avatarUrl: profile.profile_url || session.user.user_metadata.avatar_url || session.user.user_metadata.picture || undefined,
+          settings: profile.settings,
+          authorisation: profile.authorisation,
+          analytics: profile.analytics,
+        })
+        setLoading(false)
+        clearTimeout(expiryTimer)
+        if (profile.access_expires_at) {
+          expiryTimer = setTimeout(getProfile, Math.min(2_147_483_647, Math.max(0, Date.parse(profile.access_expires_at) - Date.now())))
+        }
+      } catch {
+        if (!cancelled) {
+          setCurrentUser(undefined)
+          setLoading(true)
+          navigate('/login', { replace: true })
+        }
+      } finally {
+        checking = false
       }
-      setLoading(false)
     }
 
     getProfile()
-  }, [navigate])
+    // Backend enforcement is immediate. These checks also close an already-open
+    // screen after expiry/deactivation and refresh permissions on navigation/focus.
+    const interval = setInterval(getProfile, 60_000)
+    const onVisible = () => { if (document.visibilityState === 'visible') getProfile() }
+    window.addEventListener('focus', getProfile)
+    document.addEventListener('visibilitychange', onVisible)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      // Keep Supabase calls outside its auth callback to avoid a session-lock wait.
+      queueMicrotask(getProfile)
+    })
+    return () => {
+      cancelled = true
+      clearTimeout(expiryTimer)
+      clearInterval(interval)
+      window.removeEventListener('focus', getProfile)
+      document.removeEventListener('visibilitychange', onVisible)
+      subscription.unsubscribe()
+    }
+  }, [navigate, location.pathname])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     navigate('/login')
   }
 
-  if (loading) {
+  if (loading || !currentUser) {
     return null
   }
 
