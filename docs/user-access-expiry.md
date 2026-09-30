@@ -49,6 +49,25 @@ Browser tests use installed Microsoft Edge by default. Set
 `BOOKINGS_TEST_BROWSER_CHANNEL=chrome` to use installed Chrome instead.
 Screenshots and generated reports remain ignored by Git.
 
+Final regression verification (30 September 2026):
+
+- 17 database/logic tests, including applying the migration to populated main
+  databases and comparing existing reads, booking CRUD, maintenance, bug votes,
+  settings, profile login updates and staff permissions before/after the upgrade.
+- 26 browser cases across desktop/mobile, including automatic expiry with no
+  interaction, expiry assigned to an already-open Never session, booking CRUD,
+  desktop search, maintenance, bug reporting/votes and protected routes.
+- 26 unchanged page/navigation views compared with main: identical rendered text
+  and screenshots on desktop/mobile. Access Management is the intended UI change.
+- Production build passes. Full ESLint has existing main violations; the branch
+  introduces no new lint errors. Runtime dependencies and deployment settings are unchanged.
+
+The existing narrow mobile booking toolbar can clip Search outside the viewport;
+that behaviour also exists on main and is unchanged. Browser search coverage uses
+desktop; booking creation, updates and deletion are checked on both sizes.
+Temporary demo/comparison scripts, sample data, screenshots and reports are outside
+the feature commit. Only permanent tests and this verification summary are included.
+
 Hosted Google OAuth, the deployed PostgREST gateway, and Supabase Realtime have not
 been tested against this migration. Before any future production rollout, verify
 those integrations on an isolated Supabase project with separate browser profiles

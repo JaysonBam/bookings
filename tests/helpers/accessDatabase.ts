@@ -11,7 +11,7 @@ export const accounts = {
   missing: { id: '00000000-0000-4000-8000-000000000006', email: 'missing@example.com' },
 }
 
-export async function createAccessDatabase() {
+export async function createAccessDatabase(includeExpiry = true) {
   const db = new PGlite({ extensions: { btree_gist } })
   await db.exec(`
     create role anon;
@@ -31,6 +31,7 @@ export async function createAccessDatabase() {
   `)
   const migrations = new URL('../../supabase/migrations/', import.meta.url)
   for (const name of (await readdir(migrations)).filter(name => name.endsWith('.sql')).sort()) {
+    if (!includeExpiry && name === '20260930160000_user_access_expiry.sql') continue
     await db.exec(await readFile(new URL(name, migrations), 'utf8'))
   }
   for (const account of Object.values(accounts)) {
@@ -38,9 +39,12 @@ export async function createAccessDatabase() {
   }
   for (const [key, account] of Object.entries(accounts)) {
     if (key === 'missing') continue
-    await db.query(`insert into public.profiles(id,email,full_name,status,authorisation,settings,analytics,access_expires_at)
-      values ($1,$2,$3,$4,$5,$5,$5,case when $6 then now()-interval '1 hour' else null end)`,
-    [key === 'pending' ? null : account.id, account.email, key, key === 'pending' ? 'pending' : 'active', key.toLowerCase().includes('admin'), key.toLowerCase().includes('expired')])
+    await db.query(`insert into public.profiles(id,email,full_name,status,authorisation,settings,analytics)
+      values ($1,$2,$3,$4,$5,$5,$5)`,
+    [key === 'pending' ? null : account.id, account.email, key, key === 'pending' ? 'pending' : 'active', key.toLowerCase().includes('admin')])
+    if (includeExpiry && key.toLowerCase().includes('expired')) {
+      await db.query("update profiles set access_expires_at=now()-interval '1 hour' where email=$1", [account.email])
+    }
   }
   await db.exec(`
     insert into rooms(name,max_people,min_people) values ('Room 1',8,1);
