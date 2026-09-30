@@ -1,8 +1,9 @@
 # User access expiry
 
 Branch: `feature/user-access-expiry`, based on production/main `fff1808`.
-This feature has not been deployed. No hosted database or authentication settings
-were changed during development.
+The database migration was deployed to production Bookings (`droihuwjvkfmgvqflsru`)
+on 30 September 2026. The website and main branch have not been deployed or merged.
+No authentication settings or Edge functions were changed.
 
 ## Behaviour
 
@@ -68,8 +69,14 @@ desktop; booking creation, updates and deletion are checked on both sizes.
 Temporary demo/comparison scripts, sample data, screenshots and reports are outside
 the feature commit. Only permanent tests and this verification summary are included.
 
-Hosted Google OAuth, the deployed PostgREST gateway, and Supabase Realtime have not
-been tested against this migration. Before any future production rollout, verify
-those integrations on an isolated Supabase project with separate browser profiles
-for staff and users. Apply the migration before deploying the web build. No scheduled
-cleanup, new authentication provider, Edge function, or Auth setting is required.
+Production database verification passed before and after deployment using rollback
+transactions: all nine existing users retain permanent access, reads across all seven
+tables and existing staff permissions are preserved, expired reads/writes are denied,
+and staff duration/deactivation/reactivation controls work. Existing policies and the
+production permission safeguard remain unchanged; table counts are unchanged and no
+verification data was retained. The live PostgREST gateway recognizes the new column
+and RPCs and rejects anonymous expiry changes.
+
+Hosted Google OAuth and Supabase Realtime were not exercised during deployment.
+The web build remains pending in the PR. No scheduled cleanup, new authentication
+provider, Edge function, or Auth setting is required.
