@@ -4,6 +4,7 @@ import { useTheme } from '@mui/material/styles'
 import { styles as makeStyles } from './styles'
 import logo from '../../assets/logo.svg'
 import { supabase } from '../../lib/supabaseClient'
+import { hasProfileAccess } from '../../lib/accessExpiry'
 import { useState, useEffect } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 
@@ -39,7 +40,7 @@ export default function LoginPage() {
           .eq('email', email)
           .single()
 
-        if (profileError || !profile) {
+        if (profileError || !hasProfileAccess(profile)) {
             await supabase.auth.signOut()
             setErrorMsg('Access denied, contact admin for access')
             setLoading(false)
@@ -51,15 +52,10 @@ export default function LoginPage() {
             profile_url: user.user_metadata.avatar_url || user.user_metadata.picture,
         }
 
-        if (profile.status === 'pending') {
-            await supabase.from('profiles').update({
-                ...updates,
-                id: user.id,
-                status: 'active'
-            }).eq('email', email)
-        } else {
-            await supabase.from('profiles').update(updates).eq('email', email)
-        }
+        const { error: updateError } = await supabase.from('profiles').update(
+            profile.status === 'pending' ? { ...updates, id: user.id, status: 'active' } : updates
+        ).eq('email', email).select('email').single()
+        if (updateError) throw updateError
 
         navigate('/bookings')
       } catch (err) {

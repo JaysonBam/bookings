@@ -27,15 +27,23 @@ import {
   Card,
   CardContent,
   CardActions,
-  Divider
+  Divider,
+  Menu,
+  MenuItem,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material'
 import Header from '../../components/header'
 import DeleteIcon from '@mui/icons-material/DeleteOutlined'
 import AddIcon from '@mui/icons-material/Add'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { useTheme } from '@mui/material/styles'
 import { styles as makeStyles } from './styles'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabaseClient'
+import { accessDurations, formatAccessExpiry, hasProfileAccess } from '../../lib/accessExpiry'
 import {
   addHexForgeProfile,
   deleteHexForgeProfile,
@@ -51,6 +59,7 @@ type Profile = {
   settings: boolean
   authorisation: boolean
   analytics: boolean
+  access_expires_at: string | null
 }
 
 type PermissionField = 'settings' | 'authorisation' | 'analytics'
@@ -71,6 +80,12 @@ export default function AccessPage() {
   const [newEmail, setNewEmail] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [newDuration, setNewDuration] = useState('never')
+  const [actionMenu, setActionMenu] = useState<{ anchor: HTMLElement, profile: Profile } | null>(null)
+  const [expiryProfile, setExpiryProfile] = useState<Profile | null>(null)
+  const [duration, setDuration] = useState('never')
+  const [savingExpiry, setSavingExpiry] = useState(false)
+  const [expiryError, setExpiryError] = useState<string | null>(null)
   const [hexForgeProfiles, setHexForgeProfiles] = useState<HexForgeProfile[]>([])
   const [hexForgeLoading, setHexForgeLoading] = useState(true)
   const [openHexForgeModal, setOpenHexForgeModal] = useState(false)
@@ -125,6 +140,66 @@ export default function AccessPage() {
     fetchHexForgeProfiles()
   }, [fetchProfiles, fetchHexForgeProfiles])
 
+  const activeProfiles = profiles.filter(profile => hasProfileAccess(profile))
+  const inactiveProfiles = profiles.filter(profile => !hasProfileAccess(profile))
+
+  const openExpiry = (profile: Profile) => {
+    setActionMenu(null)
+    setDuration('never')
+    setExpiryError(null)
+    setExpiryProfile(profile)
+  }
+
+  const setExpiry = async (profile: Profile, hours: number | null) => {
+    const { error } = await supabase.rpc('set_profile_access_expiry', {
+      target_email: profile.email, duration_hours: hours,
+    })
+    if (error) throw error
+    await fetchProfiles()
+  }
+
+  const handleDeactivate = async (profile: Profile) => {
+    setActionMenu(null)
+    try {
+      await setExpiry(profile, 0)
+      showToast('User deactivated')
+    } catch (error) {
+      showToast(getErrorMessage(error, 'Failed to deactivate user'), 'error')
+    }
+  }
+
+  const handleSaveExpiry = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!expiryProfile) return
+    setSavingExpiry(true)
+    setExpiryError(null)
+    try {
+      await setExpiry(expiryProfile, duration === 'never' ? null : Number(duration))
+      setExpiryProfile(null)
+      showToast('User access updated')
+    } catch (error) {
+      setExpiryError(getErrorMessage(error, 'Failed to update access'))
+    } finally {
+      setSavingExpiry(false)
+    }
+  }
+
+  const renderExpirySelect = (value: string, onChange: (value: string) => void) => (
+    <TextField select label="Access expires" fullWidth value={value} onChange={event => onChange(event.target.value)}>
+      {accessDurations.map(option => (
+        <MenuItem key={option.label} value={option.hours === null ? 'never' : String(option.hours)}>{option.label}</MenuItem>
+      ))}
+    </TextField>
+  )
+
+  const renderActions = (profile: Profile) => (
+    <Tooltip title="User actions">
+      <IconButton size="small" aria-label={`Actions for ${profile.email}`} onClick={event => setActionMenu({ anchor: event.currentTarget, profile })}>
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+    </Tooltip>
+  )
+
   const handleToggle = async (email: string, field: 'settings' | 'authorisation' | 'analytics', currentValue: boolean) => {
     try {
       setProfiles(prev => prev.map(p => 
@@ -135,6 +210,7 @@ export default function AccessPage() {
         .from('profiles')
         .update({ [field]: !currentValue })
         .eq('email', email)
+        .select('email').single()
 
       if (error) throw error
     } catch (error) {
@@ -148,14 +224,15 @@ export default function AccessPage() {
     if (!confirm(`Are you sure you want to remove ${email}?`)) return
 
     try {
-      setProfiles(prev => prev.filter(p => p.email !== email))
-      
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .delete()
         .eq('email', email)
+        .select('email')
 
       if (error) throw error
+      if (!data?.length) throw new Error('User was not removed. Refresh and check your access.')
+      setProfiles(prev => prev.filter(p => p.email !== email))
       showToast('User removed successfully', 'success')
     } catch (error) {
       console.error('Error deleting user:', error)
@@ -170,9 +247,9 @@ export default function AccessPage() {
     setAdding(true)
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .insert([{ email: newEmail, status: 'pending' }])
+      const { error } = await supabase.rpc('set_profile_access_expiry', {
+        target_email: newEmail, duration_hours: newDuration === 'never' ? null : Number(newDuration), add_user: true,
+      })
 
       if (error) {
         if (error.code === '23505') throw new Error('User already exists')
@@ -181,6 +258,8 @@ export default function AccessPage() {
 
       showToast('User added successfully', 'success')
       setNewEmail('')
+      setNewDuration('never')
+      setOpenModal(false)
       fetchProfiles()
     } catch (err) {
       setAddError(getErrorMessage(err, 'Failed to add user'))
@@ -221,9 +300,9 @@ export default function AccessPage() {
     }
   }
 
-  const renderMobileView = () => (
+  const renderMobileView = (rows: Profile[]) => (
     <Stack spacing={2}>
-      {profiles.map((profile) => (
+      {rows.map((profile) => (
         <Card key={profile.email} elevation={0} sx={{ border: `1px solid ${theme.palette.divider}` }}>
           <CardContent>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
@@ -243,13 +322,16 @@ export default function AccessPage() {
                     </Typography>
                 </Box>
                 <Chip 
-                    label={profile.status} 
+                    label={hasProfileAccess(profile) ? profile.status : 'inactive'}
                     size="small" 
-                    color={profile.status === 'active' ? 'success' : 'default'}
-                    variant={profile.status === 'active' ? 'filled' : 'outlined'}
+                    color={hasProfileAccess(profile) && profile.status === 'active' ? 'success' : 'default'}
+                    variant={hasProfileAccess(profile) && profile.status === 'active' ? 'filled' : 'outlined'}
                 />
             </Box>
             <Divider sx={{ mb: 2 }} />
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Access expires: {formatAccessExpiry(profile.access_expires_at)}
+            </Typography>
             <Stack spacing={1}>
                 {permissionFields.map((permission) => (
                     <Box key={permission} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -266,18 +348,11 @@ export default function AccessPage() {
             </Stack>
           </CardContent>
           <CardActions sx={{ justifyContent: 'flex-end', pt: 0, pb: 2, px: 2 }}>
-            <Button 
-                size="small" 
-                color="error" 
-                startIcon={<DeleteIcon />}
-                onClick={() => handleDelete(profile.email)}
-            >
-                Remove User
-            </Button>
+            {renderActions(profile)}
           </CardActions>
         </Card>
       ))}
-      {profiles.length === 0 && (
+      {rows.length === 0 && (
           <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
               No users found
           </Typography>
@@ -285,13 +360,14 @@ export default function AccessPage() {
     </Stack>
   )
 
-  const renderDesktopView = () => (
+  const renderDesktopView = (rows: Profile[]) => (
     <TableContainer component={Paper} elevation={0} sx={styles.tableContainer}>
         <Table>
           <TableHead>
             <TableRow>
               <TableCell>User</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>Access expires</TableCell>
               <TableCell align="center">Settings</TableCell>
               <TableCell align="center">Analytics</TableCell>
               <TableCell align="center">Access</TableCell>
@@ -299,7 +375,7 @@ export default function AccessPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {profiles.map((profile) => (
+            {rows.map((profile) => (
               <TableRow key={profile.email} hover>
                 <TableCell>
                   <Box sx={styles.userCell}>
@@ -339,12 +415,17 @@ export default function AccessPage() {
                 </TableCell>
                 <TableCell>
                   <Chip 
-                    label={profile.status} 
+                    label={hasProfileAccess(profile) ? profile.status : 'inactive'}
                     size="small" 
-                    color={profile.status === 'active' ? 'success' : 'default'}
-                    variant={profile.status === 'active' ? 'filled' : 'outlined'}
+                    color={hasProfileAccess(profile) && profile.status === 'active' ? 'success' : 'default'}
+                    variant={hasProfileAccess(profile) && profile.status === 'active' ? 'filled' : 'outlined'}
                     sx={styles.statusChip}
                   />
+                </TableCell>
+                <TableCell>
+                  <Tooltip title={profile.access_expires_at ? new Date(profile.access_expires_at).toLocaleString() : 'Never'}>
+                    <span>{formatAccessExpiry(profile.access_expires_at)}</span>
+                  </Tooltip>
                 </TableCell>
                 <TableCell align="center">
                   <Switch 
@@ -371,22 +452,13 @@ export default function AccessPage() {
                   />
                 </TableCell>
                 <TableCell align="right">
-                    <Tooltip title="Delete user">
-                        <IconButton 
-                            color="error" 
-                            size="small" 
-                            onClick={() => handleDelete(profile.email)}
-                            sx={styles.actionButton}
-                        >
-                            <DeleteIcon fontSize="small" />
-                        </IconButton>
-                    </Tooltip>
+                    {renderActions(profile)}
                 </TableCell>
               </TableRow>
             ))}
-            {!loading && profiles.length === 0 && (
+            {!loading && rows.length === 0 && (
                 <TableRow>
-                     <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                     <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                          <Typography color="text.secondary">No users found</Typography>
                      </TableCell>
                 </TableRow>
@@ -593,7 +665,46 @@ export default function AccessPage() {
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
             <CircularProgress />
         </Box>
-      ) : isMobile ? renderMobileView() : renderDesktopView()}
+      ) : isMobile ? renderMobileView(activeProfiles) : renderDesktopView(activeProfiles)}
+
+      {!loading && inactiveProfiles.length > 0 && (
+        <Accordion defaultExpanded={false} elevation={0} sx={{ mt: 2, border: 1, borderColor: 'divider' }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography>Inactive users ({inactiveProfiles.length})</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            {isMobile ? renderMobileView(inactiveProfiles) : renderDesktopView(inactiveProfiles)}
+          </AccordionDetails>
+        </Accordion>
+      )}
+
+      <Menu anchorEl={actionMenu?.anchor} open={!!actionMenu} onClose={() => setActionMenu(null)}>
+        {actionMenu && hasProfileAccess(actionMenu.profile) ? [
+          <MenuItem key="expiry" onClick={() => openExpiry(actionMenu!.profile)}>Set expiry date</MenuItem>,
+          <MenuItem key="deactivate" onClick={() => handleDeactivate(actionMenu!.profile)}>Deactivate</MenuItem>,
+        ] : actionMenu && <MenuItem onClick={() => openExpiry(actionMenu.profile)}>Activate</MenuItem>}
+        <MenuItem sx={{ color: 'error.main' }} onClick={() => {
+          if (actionMenu) handleDelete(actionMenu.profile.email)
+          setActionMenu(null)
+        }}>Delete</MenuItem>
+      </Menu>
+
+      <Modal open={!!expiryProfile} onClose={() => { if (!savingExpiry) setExpiryProfile(null) }}>
+        <Box sx={styles.modalContent} component="form" onSubmit={handleSaveExpiry}>
+          <Typography variant="h6" sx={{ mb: 2 }}>{hasProfileAccess(expiryProfile) ? 'Set expiry date' : 'Activate user'}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3, overflowWrap: 'anywhere' }}>
+            {expiryProfile?.email}. The duration starts when you save.
+          </Typography>
+          <Stack spacing={2}>
+            {expiryError && <Alert severity="error">{expiryError}</Alert>}
+            {renderExpirySelect(duration, setDuration)}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+              <Button disabled={savingExpiry} onClick={() => setExpiryProfile(null)}>Cancel</Button>
+              <Button type="submit" variant="contained" disabled={savingExpiry}>{savingExpiry ? 'Saving...' : 'Save'}</Button>
+            </Box>
+          </Stack>
+        </Box>
+      </Modal>
 
       <Box sx={{ mt: 5, mb: 2 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-start" justifyContent="space-between">
@@ -651,6 +762,7 @@ export default function AccessPage() {
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
             />
+            {renderExpirySelect(newDuration, setNewDuration)}
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
                 <Button onClick={() => setOpenModal(false)} disabled={adding}>Cancel</Button>
                 <Button variant="contained" type="submit" disabled={adding}>
