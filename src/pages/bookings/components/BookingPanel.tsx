@@ -25,7 +25,7 @@ interface BookingPanelProps {
   prefill?: { roomId?: string; timeSlot?: string; booking?: any } | null;
   defaultStaffName?: string;
   showToast?: (title: string, description: string, severity?: "success" | "error" | "info") => void;
-  onBookingUpdate?: () => void;
+  onBookingUpdate?: (staffName?: string) => void;
   rooms: any[];
   courses: any[];
   creationStartTime?: number | null;
@@ -601,7 +601,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           }
           
           resetFormToDefaults();
-          onBookingUpdate?.();
+          onBookingUpdate?.(staffName !== prefill?.booking?.booked_by ? staffName : undefined);
           onClose();
 
       } catch (err: any) {
@@ -1015,7 +1015,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         showToast("Saved", "Booking created", "success");
       }
       resetFormToDefaults();
-      onBookingUpdate?.();
+      onBookingUpdate?.(staffName !== prefill?.booking?.booked_by ? staffName : undefined);
       onClose();
     } catch (err: any) {
       showToast("Save failed", mapDatabaseError(err), "error");
@@ -1138,7 +1138,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         if (error) throw error;
         showToast("Saved", `${bookingsToInsert.length} bookings created`, "success");
         resetFormToDefaults();
-        onBookingUpdate?.();
+        onBookingUpdate?.(staffName !== prefill?.booking?.booked_by ? staffName : undefined);
         onClose();
     } catch (err: any) {
         console.error(err);
