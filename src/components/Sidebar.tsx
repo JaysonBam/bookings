@@ -14,7 +14,7 @@ import {
   Typography,
   IconButton,
 } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
+import { alpha, useTheme } from '@mui/material/styles'
 import SwipeableDrawer from '@mui/material/SwipeableDrawer'
 import logo from '../assets/logo.svg'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
@@ -90,19 +90,19 @@ export default function Sidebar({
   })
 
   const DrawerContent = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ minHeight: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', direction: 'ltr' }}>
       <Toolbar sx={{ display: 'flex', alignItems: 'center', px: [2] }}>
-        <Box sx={{ flexGrow: 1, display: 'flex' }}>
+        <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex' }}>
           <img
             src={logo}
-            height = {100}
-            width= 'auto'
+            alt="Bookings logo"
             style={{
+              width: '100%', height: 100, objectFit: 'contain',
               filter: theme.palette.mode === 'dark' ? 'invert(1) brightness(1)' : 'none',
             }}
           />
         </Box>
-        <IconButton onClick={onToggle}>
+        <IconButton onClick={onToggle} aria-label="Close menu" sx={{ flexShrink: 0 }}>
           <ChevronLeftIcon />
         </IconButton>
       </Toolbar>
@@ -113,9 +113,9 @@ export default function Sidebar({
         <Avatar 
           src={currentUser?.avatarUrl || undefined} 
           imgProps={{ referrerPolicy: 'no-referrer' }}
-          sx={{ width: 40, height: 40, border: '2px solid' }} 
+          sx={{ width: 40, height: 40, border: '2px solid', flexShrink: 0 }}
         />
-        <Typography sx={{ fontWeight: 600, fontSize: '1rem' }} noWrap>
+        <Typography sx={{ fontWeight: 600, fontSize: '1rem', minWidth: 0 }} noWrap>
           {currentUser?.name ?? 'User'}
         </Typography>
       </Box>
@@ -172,7 +172,22 @@ export default function Sidebar({
       PaperProps={{
         sx: {
           width: finalDrawerWidth,
+          maxWidth: '100%',
           height: '100%',
+          overflowX: 'hidden',
+          // Keep the scrollbar at the outside edge; content stays left-to-right.
+          direction: 'rtl',
+          '@supports not selector(::-webkit-scrollbar)': {
+            scrollbarWidth: 'thin',
+            scrollbarColor: `${alpha(theme.palette.text.secondary, 0.45)} transparent`,
+          },
+          '&::-webkit-scrollbar': { width: 6 },
+          '&::-webkit-scrollbar-button': { display: 'none' },
+          '&::-webkit-scrollbar-track': { backgroundColor: 'transparent' },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: alpha(theme.palette.text.secondary, 0.45),
+            borderRadius: 8,
+          },
           boxSizing: 'border-box',
           borderRight: '1px solid',
           borderColor: 'divider',
