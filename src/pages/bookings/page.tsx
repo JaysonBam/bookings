@@ -414,7 +414,10 @@ const BookingsContent = () => {
                 prefill={panelData}
                 defaultStaffName={currentUser}
                 showToast={showToast}
-                onBookingUpdate={() => setRefreshGridTrigger(prev => prev + 1)}
+                onBookingUpdate={(staffName) => {
+                    if (staffName !== undefined) setCurrentUser(staffName);
+                    setRefreshGridTrigger(prev => prev + 1);
+                }}
                 rooms={rooms}
                 courses={courses}
                 creationStartTime={creationStartTime}
