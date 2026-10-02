@@ -138,10 +138,13 @@ const BookingsContent = () => {
             now.setMinutes(openM);
         }
 
-        setPanelData({ timeSlot: now.toISOString() });
+        // Keep the day the user is viewing; the clock supplies only the default time.
+        const bookingStart = new Date(selectedDate);
+        bookingStart.setHours(now.getHours(), now.getMinutes(), 0, 0);
+        setPanelData({ timeSlot: bookingStart.toISOString() });
         setCreationStartTime(Date.now());
         setPanelOpen(true);
-    }, []);
+    }, [selectedDate]);
 
     const handleCellClick = (roomId: string, timeSlotIso: string) => {
         setPanelData({ roomId, timeSlot: timeSlotIso });
