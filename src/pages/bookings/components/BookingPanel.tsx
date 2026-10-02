@@ -1,7 +1,7 @@
 /**
  * Purpose: Module logic for pages\bookings\components\BookingPanel.tsx.
  */
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { 
     Dialog, DialogContent, DialogTitle, DialogActions, 
     Button, TextField, Select, MenuItem, InputLabel, FormControl, 
@@ -12,6 +12,7 @@ import {
 import { Close as CloseIcon } from '@mui/icons-material';
 import { supabase } from "../../../lib/supabaseClient";
 import { format, parseISO, addMinutes, eachDayOfInterval, isBefore, differenceInMinutes, isSameDay } from "date-fns";
+import { getRoomAvailability, isReclaimableReservation, rankRooms } from "../../../lib/roomRecommendations";
 import timeLib from "../../../lib/time";
 import { useConfirm } from "../context/ConfirmDialogContext";
 import { useNow } from "../context/NowContext";
@@ -144,7 +145,9 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     return sel;
   });
 
-  const [dayBookings, setDayBookings] = useState<any[]>([]);
+  const [availability, setAvailability] = useState<{ date: string; bookings: any[] } | null>(null);
+  const availabilityReady = availability?.date === startDate;
+  const dayBookings = useMemo(() => availabilityReady ? availability!.bookings : [], [availability, availabilityReady]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
 
   const [isBulkEdit, setIsBulkEdit] = useState(false);
@@ -174,87 +177,59 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const [currentRankIndex, setCurrentRankIndex] = useState(0);
   const [openingHours, setOpeningHours] = useState<{ start: string; end: string }>({ start: "06:00", end: "21:00" });
 
+  const [hoursReady, setHoursReady] = useState(false);
+  const smartRequestId = useRef(0);
+
+  useEffect(() => {
+    smartRequestId.current += 1;
+    setIsSmartSelecting(false);
+    setRankedRooms([]);
+    setCurrentRankIndex(0);
+  }, [open, startDate, startClock, duration, openingHours, rooms, currentTime]);
+
   useEffect(() => {
     if (!open) return;
-    const loadBackground = async () => {
-        try {
-            const { data: hoursData } = await supabase.from("settings").select("value").eq("key", "operation_hours").maybeSingle();
-            if (hoursData && hoursData.value) {
-                const val = hoursData.value as any;
-                const start = val.start ?? val.open ?? "06:00";
-                const end = val.end ?? val.close ?? "21:00";
-                setOpeningHours({ start, end });
-            }
-
-            const dateStr = startDate; 
-            if (!dateStr) return;
-
-            // Keep availability data updated without blocking panel interaction.
-            const { data: bookingsData } = await supabase
-                .from('bookings')
-                .select('id, room_id, start_time, end_time, state, booking_day')
-                .eq('booking_day', dateStr);
-            if (bookingsData) {
-                setDayBookings(bookingsData);
-            }
-        } catch(e) {
-            console.error("Background load error", e);
-            showToast("Warning", "Could not load availability data", "info");
-        }
+    let cancelled = false;
+    setHoursReady(false);
+    const loadHours = async () => {
+      const { data, error } = await supabase.from("settings").select("value").eq("key", "operation_hours").maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        showToast("Warning", "Could not load opening hours", "info");
+        return;
+      }
+      const value = data?.value as any;
+      setOpeningHours({ start: value?.start ?? value?.open ?? "06:00", end: value?.end ?? value?.close ?? "21:00" });
+      setHoursReady(true);
     };
-    loadBackground();
-  }, [open, startDate]); // Re-fetch if date changes
-
+    loadHours();
+    return () => { cancelled = true; };
+  }, [open]);
 
   useEffect(() => {
+    setAvailability(null);
     if (!startDate || !open) return;
+    let cancelled = false;
     const fetchBookings = async () => {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('id, room_id, start_time, end_time, state, booking_day')
-        .eq('booking_day', startDate);
-      if (!error && data) setDayBookings(data);
+      const { data, error } = await supabase.from('bookings')
+        .select('id, room_id, start_time, end_time, state, booking_day').eq('booking_day', startDate);
+      if (cancelled) return;
+      if (error || !data) {
+        showToast("Warning", "Could not load availability data", "info");
+        return;
+      }
+      setAvailability({ date: startDate, bookings: data });
     };
     fetchBookings();
+    return () => { cancelled = true; };
   }, [startDate, open]);
 
+  const roomRequest = useMemo(() => ({ date: startDate, time: startClock, now: currentTime,
+    openingHours, excludeBookingId: prefill?.booking?.id }), [startDate, startClock, currentTime, openingHours, prefill?.booking?.id]);
+
   const availableDurationOptions = useMemo(() => {
-    if (!startClock) return [30];
-    const parseTime = (t: string) => {
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + m;
-    };
-    const startMins = parseTime(startClock);
-    
-    const [closeH, closeM] = openingHours.end.split(':').map(Number);
-    let limitMins = closeH * 60 + closeM;
-    
-    const isLate = (b: any) => {
-        if (b.state !== 'Reserved') return false;
-        if (b.booking_day !== startDate) return false;
-        try {
-            const bStart = parseISO(`${b.booking_day}T${b.start_time}`);
-            const limit = addMinutes(bStart, 10);
-            return currentTime > limit;
-        } catch (e) { return false; }
-    };
-
-    for (const b of dayBookings) {
-      if (String(b.room_id) !== String(roomId)) continue;
-      if (prefill?.booking && String(b.id) === String(prefill.booking.id)) continue;
-      
-    // Late reservations are treated as reclaimable and do not cap duration.
-      if (isLate(b)) continue;
-
-      const bStart = parseTime(b.start_time);
-      const bEnd = parseTime(b.end_time);
-      if (bStart > startMins) {
-        if (bStart < limitMins) limitMins = bStart;
-      } else if (bStart <= startMins && bEnd > startMins) {
-         limitMins = startMins; 
-      }
-    }
-    const maxDuration = limitMins - startMins;
+    if (!availabilityReady || !hoursReady) return duration ? [Number(duration)] : [];
+    const { minutesAvailable: maxDuration } = getRoomAvailability(roomId, dayBookings, roomRequest);
     const options: number[] = [];
     for (let d = 30; d <= maxDuration && d <= 120; d += 30) options.push(d);
     
@@ -266,7 +241,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         }
     }
     return options;
-  }, [startClock, dayBookings, prefill?.booking, duration, roomId, currentTime, startDate, openingHours]);
+  }, [startClock, dayBookings, prefill?.booking, duration, roomId, roomRequest, availabilityReady, hoursReady]);
 
   const availableExtensionOptions = useMemo(() => {
     if (!prefill?.booking) return [];
@@ -295,6 +270,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   }, [startClock, duration, dayBookings, prefill?.booking, roomId, openingHours]);
 
   useEffect(() => {
+    if (!availabilityReady || !hoursReady) return;
     const currentDur = parseInt(duration);
     if (availableDurationOptions.length > 0) {
         if (!duration || Number.isNaN(currentDur)) {
@@ -308,7 +284,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     } else {
         if (duration !== "") setDuration("");
     }
-  }, [availableDurationOptions, duration, prefill?.booking]);
+  }, [availableDurationOptions, duration, prefill?.booking, availabilityReady, hoursReady]);
 
   useEffect(() => {
     const r = rooms.find((x) => String(x.id) === String(roomId));
@@ -332,147 +308,34 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setSelectedBorrowed((s) => ({ ...s, [item]: !s[item] }));
   };
 
-  const getOptimalRooms = (groupSize: number, allRooms: any[], bookings: any[], targetDate: Date, currentTime: Date) => {
-      // Rank rooms by fit, availability quality, maintenance load, then name.
-      const validRooms = allRooms.filter(r => (r.max_people || 0) >= groupSize);
-      
-      const targetMins = targetDate.getHours() * 60 + targetDate.getMinutes();
-      const endOfDayMins = 24 * 60;
-
-      const roomMetrics = validRooms.map(room => {
-          const rId = String(room.id);
-          const roomBookings = bookings.filter((b: any) => String(b.room_id) === rId);
-          
-          let nextBookingStart = endOfDayMins;
-          let isOccupied = false;
-          let maxOverdueMinutes = 0;
-          let currentLateMinutes = 0;
-          let isLateAvailable = false;
-
-          roomBookings.forEach((b: any) => {
-              const start = parseISO(`${b.booking_day}T${b.start_time}`);
-              const end = parseISO(`${b.booking_day}T${b.end_time}`);
-              const startMins = start.getHours() * 60 + start.getMinutes();
-              
-              if (targetDate >= start && targetDate < end) {
-                  if (b.state === 'Active') {
-                      isOccupied = true;
-                  } else if (b.state === 'Reserved') {
-                      const lateDiff = differenceInMinutes(currentTime, start);
-                      if (lateDiff > 10) {
-                          currentLateMinutes = lateDiff;
-                          isLateAvailable = true;
-                      } else {
-                          isOccupied = true;
-                      }
-                  }
-              }
-
-              if (b.state === 'Active' && currentTime > end) {
-                  const ovr = differenceInMinutes(currentTime, end);
-                  if (ovr > maxOverdueMinutes) maxOverdueMinutes = ovr;
-              }
-
-              if (start > targetDate) {
-                  if (startMins < nextBookingStart) {
-                      nextBookingStart = startMins;
-                  }
-              }
-          });
-
-          let minutesAvailable = isOccupied ? 0 : (nextBookingStart - targetMins);
-          if (minutesAvailable < 0) minutesAvailable = 0;
-
-          const issuesCount = (room.dynamic_labels || []).length;
-          const minRecommended = room.min_people || 0;
-
-          let score = 0;
-          if (groupSize >= minRecommended) {
-              score = minRecommended;
-          } else {
-              score = minRecommended * -1;
-          }
-
-          return {
-              room,
-              score,
-              minutesAvailable,
-              issuesCount,
-              maxOverdueMinutes,
-              currentLateMinutes,
-              isLateAvailable,
-              name: room.name,
-              isOccupied
-          };
-      });
-      
-
-      const availableRooms = roomMetrics.filter(m => !m.isOccupied);
-
-
-      availableRooms.sort((a, b) => {
-          if (a.score !== b.score) return b.score - a.score;
-
-          if (a.isLateAvailable !== b.isLateAvailable) {
-              // Prefer clean availability before late-reclaimable slots.
-              return a.isLateAvailable ? 1 : -1; // False (Clean) comes first
-          }
-
-          if (!a.isLateAvailable) {
-              if (a.minutesAvailable !== b.minutesAvailable) return b.minutesAvailable - a.minutesAvailable;
-          } else {
-              if (a.currentLateMinutes !== b.currentLateMinutes) return b.currentLateMinutes - a.currentLateMinutes;
-          }
-
-          const aOv = a.maxOverdueMinutes;
-          const bOv = b.maxOverdueMinutes;
-          
-          if (aOv === 0 && bOv > 0) return -1; // a is empty (better)
-          if (aOv > 0 && bOv === 0) return 1;  // b is empty (better)
-          if (aOv > 0 && bOv > 0) {
-             return bOv - aOv;
-          }
-
-          if (a.issuesCount !== b.issuesCount) return a.issuesCount - b.issuesCount;
-
-          return a.name.localeCompare(b.name);
-      });
-
-      return availableRooms.map(m => m.room);
-  };
-
   const handleSmartSelect = async () => {
+    if (!hoursReady) {
+      showToast("Unavailable", "Opening hours have not loaded. Please reopen the booking form.", "info");
+      return;
+    }
     const sizeStr = window.prompt("Enter Group Size:");
     if (!sizeStr) return;
-    const size = parseInt(sizeStr, 10);
-    if (isNaN(size) || size <= 0) {
-        showToast("Invalid size", "Please enter a number", "error");
-        return;
+    const size = Number(sizeStr);
+    if (!Number.isInteger(size) || size <= 0) {
+      showToast("Invalid size", "Please enter a positive whole number", "error");
+      return;
     }
-
-    let targetDate = new Date();
-    try {
-        targetDate = parseISO(`${startDate}T${startClock}`);
-    } catch (e) {
+    const requestId = ++smartRequestId.current;
+    const { data: bookings, error } = await supabase.from('bookings')
+      .select('id, room_id, start_time, end_time, state, booking_day').eq('booking_day', startDate);
+    if (requestId !== smartRequestId.current) return;
+    if (error || !bookings) {
+      showToast("Unavailable", "Could not load availability data. Please try Smart Select again.", "info");
+      return;
     }
-
-    const { data: bookings } = await supabase
-        .from('bookings')
-        .select('id, room_id, start_time, end_time, state, booking_day')
-        .eq('booking_day', startDate);
-        
-    if (!bookings) {
-        return;
-    }
-    setDayBookings(bookings);
-
-    const ranked = getOptimalRooms(size, rooms, bookings, targetDate, currentTime);
-    
+    setAvailability({ date: startDate, bookings });
+    const ranked = rankRooms(size, rooms, bookings, { ...roomRequest, duration: duration ? Number(duration) : 30 });
     if (ranked.length === 0) {
-        showToast("No rooms found", "No rooms available for smart suggestion.", "info");
-        return;
+      setIsSmartSelecting(false);
+      setRankedRooms([]);
+      showToast("No rooms found", "No rooms fit this group and duration within opening hours.", "info");
+      return;
     }
-
     setRankedRooms(ranked);
     setCurrentRankIndex(0);
     setRoomId(String(ranked[0].id));
@@ -744,17 +607,12 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         return;
     }
 
+    if (!availabilityReady || !hoursReady) {
+      showToast("Unavailable", "Availability has not loaded for this date. Please try again.", "info");
+      return;
+    }
     const bookingsToDelete: string[] = [];
     if (!isBulkBooking) {
-        const isLate = (b: any) => {
-            if (b.state !== 'Reserved') return false;
-            try {
-                const bStart = parseISO(`${startDate}T${b.start_time}`);
-                const limit = addMinutes(bStart, 10);
-                return currentTime > limit;
-            } catch (e) { return false; }
-        };
-
         const hasCollision = dayBookings.some(b => {
              if (String(b.room_id) !== String(roomId)) return false;
              if (prefill?.booking && String(b.id) === String(prefill.booking.id)) return false;
@@ -765,7 +623,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              const overlaps = (bookingStartMins < bEnd && bookingEndMins > bStart);
              
              if (overlaps) {
-                 if (isLate(b)) {
+                 if (isReclaimableReservation(b, roomRequest)) {
                      // Late bookings can be auto-removed to free this overlapping slot.
                      if (!bookingsToDelete.includes(String(b.id))) {
                          bookingsToDelete.push(String(b.id));
@@ -1219,88 +1077,18 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   };
 
   const getRoomStatus = (rId: string) => {
-    if (!startClock || !startDate) return null;
-    const isToday = format(currentTime, "yyyy-MM-dd") === startDate;
-    const [h, m] = startClock.split(':').map(Number);
-    const selectedTimeMins = h * 60 + m;
-
-    const formatLateOrOverdue = (minutes: number, type: 'late' | 'overdue') => {
-        if (minutes < 60) {
-            return type === 'late' ? `${minutes} minutes late` : `Overdue ${minutes} minutes`;
-        }
-        const hours = Math.floor(minutes / 60);
-        const suffix = hours >= 1 ? `${hours} hr${hours > 1 ? 's' : ''}+` : '1 hr+';
-        return type === 'late' ? `${suffix} late` : `Overdue ${suffix}`;
-    };
-
-    const overlappingBooking = dayBookings.find(b => {
-        if (String(b.room_id) !== String(rId)) return false;
-        if (prefill?.booking && String(b.id) === String(prefill.booking.id)) return false;
-        const [sh, sm] = b.start_time.split(':').map(Number);
-        const [eh, em] = b.end_time.split(':').map(Number);
-        const startMins = sh * 60 + sm;
-        const endMins = eh * 60 + em;
-        return startMins <= selectedTimeMins && endMins > selectedTimeMins;
-    });
-
-    if (overlappingBooking) {
-        if (overlappingBooking.state === 'Active') return { color: 'error.main', text: 'Occupied' };
-        if (isToday && overlappingBooking.state === 'Reserved') {
-             const startDateObj = new Date(`${overlappingBooking.booking_day}T${overlappingBooking.start_time}`);
-             const lateThreshold = new Date(startDateObj.getTime() + 10 * 60000);
-             if (currentTime > lateThreshold) {
-                 const diff = Math.floor((currentTime.getTime() - startDateObj.getTime()) / 60000);
-                 return { color: 'warning.main', text: formatLateOrOverdue(diff, 'late') };
-             }
-             return { color: 'warning.light', text: 'Reserved' };
-        }
-        if (overlappingBooking.state === 'Reserved') return { color: 'warning.light', text: 'Reserved' };
+    if (!availabilityReady || !hoursReady || !startClock || !startDate) return null;
+    const status = getRoomAvailability(rId, dayBookings, roomRequest);
+    const describe = (minutes: number) => minutes < 60 ? minutes + ' minutes' : Math.floor(minutes / 60) + ' hr+';
+    if (status.occupied) return { color: status.reserved ? 'warning.light' : 'error.main', text: status.reserved ? 'Reserved' : 'Occupied' };
+    if (status.minutesAvailable === 0) return { color: 'text.secondary', text: 'Outside opening hours' };
+    if (status.lateMinutes) return { color: 'warning.main', text: describe(status.lateMinutes) + ' late' };
+    if (status.overdueMinutes) return { color: 'error.main', text: 'Overdue ' + describe(status.overdueMinutes) };
+    if (status.minutesAvailable <= 120) {
+      const h = Math.floor(status.minutesAvailable / 60);
+      const m = status.minutesAvailable % 60;
+      return { color: 'text.primary', text: 'Available for ' + (h ? h + ' hr' : '') + (h && m ? ' ' : '') + (m ? m + ' min' : '') };
     }
-
-    if (isToday) {
-        const overdueBooking = dayBookings.find(b => {
-            if (String(b.room_id) !== String(rId)) return false;
-            if (b.state !== 'Active') return false;
-            const endDate = new Date(`${b.booking_day}T${b.end_time}`);
-            return currentTime > endDate;
-        });
-        if (overdueBooking) {
-             const endDate = new Date(`${overdueBooking.booking_day}T${overdueBooking.end_time}`);
-             const diff = Math.floor((currentTime.getTime() - endDate.getTime()) / 60000);
-             return { color: 'error.main', text: formatLateOrOverdue(diff, 'overdue') };
-        }
-    }
-
-    let minNextStart = 24 * 60; 
-    dayBookings.forEach(b => {
-        if (String(b.room_id) !== String(rId)) return;
-        if (prefill?.booking && String(b.id) === String(prefill.booking.id)) return;
-        const [sh, sm] = b.start_time.split(':').map(Number);
-        const startMins = sh * 60 + sm;
-        if (startMins > selectedTimeMins && startMins < minNextStart) {
-            minNextStart = startMins;
-        }
-    });
-
-    if (minNextStart < 24 * 60) {
-        const diff = minNextStart - selectedTimeMins;
-        if (diff > 0 && diff <= 120) {
-            let durationText = "";
-            if (diff === 30) durationText = "30 min";
-            else if (diff === 60) durationText = "1 hr";
-            else if (diff === 90) durationText = "1.5 hr";
-            else if (diff === 120) durationText = "2 hr";
-            else {
-                 const h = Math.floor(diff / 60);
-                 const m = diff % 60;
-                 if (h === 0) durationText = `${m} min`;
-                 else if (m === 0) durationText = `${h} hr`;
-                 else durationText = `${h} hr ${m} min`;
-            }
-            return { color: 'text.primary', text: `Available for ${durationText}` };
-        }
-    }
-
     return null;
   };
 
