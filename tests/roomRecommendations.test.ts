@@ -14,10 +14,10 @@ const ids = (rooms: RoomCandidate[]) => rooms.map(room => room.id)
 test('capacity and room availability are mandatory before best-fit ranking', () => {
   assert.deepEqual(ids(rankRooms(4, [room(1, { max_people: 3 }), room(2, { is_available: false }), room(3)], [], request)), [3])
 })
-test('a future booking must fit the entire selected duration', () => {
+test('full duration matches rank first without discarding shorter slots', () => {
   const rooms = [room(1, { min_people: 4 }), room(2)]
   const bookings = [booking(1, '13:30', '14:30')]
-  assert.deepEqual(ids(rankRooms(4, rooms, bookings, { ...request, duration: 90 })), [2])
+  assert.deepEqual(ids(rankRooms(4, rooms, bookings, { ...request, duration: 90 })), [2, 1])
   assert.deepEqual(ids(rankRooms(4, rooms, bookings, { ...request, duration: 30 })), [1, 2])
 })
 test('no duration selected still requires one bookable half-hour', () => {
@@ -28,8 +28,14 @@ test('configured opening and closing hours bound availability', () => {
     assert.deepEqual(rankRooms(4, [room(1)], [], { ...request, time }), [], time)
   }
   assert.equal(getRoomAvailability(1, [], { ...request, time: '20:30' }).minutesAvailable, 30)
-  assert.deepEqual(rankRooms(4, [room(1)], [], { ...request, time: '20:30', duration: 60 }), [])
+  assert.deepEqual(ids(rankRooms(4, [room(1)], [], { ...request, time: '20:30', duration: 60 })), [1])
   assert.equal(getRoomAvailability(1, [], { ...request, openingHours: { start: '08:00', end: '14:00' } }).minutesAvailable, 60)
+})
+
+test('shorter alternatives remain available when no room fits the requested duration', () => {
+  const rooms = [room(1), room(2), room(3)]
+  const bookings = [booking(1, '14:30', '15:00'), booking(2, '14:00', '15:00'), booking(3, '13:00', '14:00')]
+  assert.deepEqual(ids(rankRooms(4, rooms, bookings, { ...request, duration: 120 })), [1, 2])
 })
 test('reservations on a future day cannot be reclaimed using the current clock', () => {
   const bookings = [booking(1, '13:00', '14:00')]

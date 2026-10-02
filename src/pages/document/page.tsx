@@ -248,7 +248,8 @@ export default function DocumentPage() {
                                         <Paper variant="outlined" sx={{ p: 3, mt: 2, bgcolor: 'background.paper' }}>
                                             <Typography variant="subtitle2" gutterBottom>Smart Select Logic Flow (in order):</Typography>
                                             <Box component="ol" sx={{ pl: 2, m: 0, '& li': { mb: 1, fontSize: '0.875rem' } }}>
-                                                <li><strong>Filter Availability:</strong> Removes closed rooms, rooms that are too small, and rooms that cannot fit the full selected duration within opening hours (or at least 30 minutes if no duration is selected). Late reservations can only be reclaimed on the current day, with confirmation before saving.</li>
+                                                <li><strong>Filter Availability:</strong> Removes closed rooms, rooms that are too small, and rooms with less than 30 minutes available within opening hours. Late reservations can only be reclaimed on the current day, with confirmation before saving.</li>
+                                                <li><strong>Requested Duration:</strong> Shows rooms that fit the full requested duration first, followed by shorter available slots. Selecting a shorter slot adjusts the duration to the time available.</li>
                                                 <li><strong>Best Fit:</strong> Prioritizes rooms where the group size fits the minimum recommendation efficiently.</li>
                                                 <li><strong>Clean vs Late:</strong> Prefers empty rooms over rooms that are technically reserved but "Late".</li>
                                                 <li><strong>Maximize Time:</strong> Prioritizes rooms that are free for the longest duration.</li>

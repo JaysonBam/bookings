@@ -68,7 +68,13 @@ test('future recommendation preserves 90 minutes and saves the chosen day and ti
   await smart(page);
   await expect(panel.getByLabel('Room', { exact: true })).toContainText('Room 2');
   await expect(panel.getByLabel('Duration', { exact: true })).toHaveText('90 mins');
-  await expect(panel.getByRole('button', { name: 'Next (1/1)', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Next (1/2)', exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: 'Next (1/2)', exact: true }).click();
+  await expect(panel.getByLabel('Room', { exact: true })).toContainText('Room 1 (Available for 30 min)');
+  await expect(panel.getByLabel('Duration', { exact: true })).toHaveText('30 mins');
+  await panel.getByRole('button', { name: 'Next (2/2)', exact: true }).click();
+  await expect(panel.getByLabel('Room', { exact: true })).toContainText('Room 2');
+  await expect(panel.getByLabel('Duration', { exact: true })).toHaveText('90 mins');
   await page.screenshot({ path: testInfo.outputPath('future-recommendation.png') });
   await panel.getByLabel('Staff Name', { exact: true }).fill('Picker verification');
   await panel.locator('.MuiFormControl-root').filter({ has: page.locator('label').filter({ hasText: /^Course$/ }) }).locator('.MuiSelect-select').click();
@@ -77,6 +83,27 @@ test('future recommendation preserves 90 minutes and saves the chosen day and ti
   await expect(panel).not.toBeVisible();
   const { rows } = await db.query("select room_id,booking_day::text,start_time,end_time from bookings where booked_by='Picker verification'");
   expect(rows).toEqual([{ room_id: 2, booking_day: '2026-10-03', start_time: '13:00:00', end_time: '14:30:00' }]);
+});
+
+test('a two-hour request offers shorter alternatives and Next keeps cycling', async ({ page, context }, testInfo) => {
+  const panel = await openPicker(page, context);
+  await db.exec(`insert into bookings(room_id,booking_day,start_time,end_time,booked_by) values
+    (1,'2026-10-03','14:30','15:00','Existing reservation'),
+    (2,'2026-10-03','14:00','15:00','Existing reservation')`);
+  await setDate(panel.getByLabel('Date', { exact: true }), '2026-10-03');
+  await panel.getByLabel('Start Time', { exact: true }).fill('13:00');
+  await chooseDuration(page, 120);
+  await smart(page);
+  await expect(panel.getByLabel('Room', { exact: true })).toContainText('Room 1 (Available for 1 hr 30 min)');
+  await expect(panel.getByLabel('Duration', { exact: true })).toHaveText('90 mins');
+  await expect(panel.getByRole('button', { name: 'Next (1/2)', exact: true })).toBeVisible();
+  await panel.screenshot({ path: testInfo.outputPath('shorter-alternative.png') });
+  await panel.getByRole('button', { name: 'Next (1/2)', exact: true }).click();
+  await expect(panel.getByLabel('Room', { exact: true })).toContainText('Room 2 (Available for 1 hr)');
+  await expect(panel.getByLabel('Duration', { exact: true })).toHaveText('60 mins');
+  await panel.getByRole('button', { name: 'Next (2/2)', exact: true }).click();
+  await expect(panel.getByLabel('Duration', { exact: true })).toHaveText('90 mins');
+  await expect(panel.getByRole('button', { name: 'Next (1/2)', exact: true })).toBeVisible();
 });
 
 test('a delayed response for an old date cannot change the new date availability', async ({ page, context }) => {
@@ -136,7 +163,7 @@ test('closing time returns no suggestion and a failed request does not report av
   const panel = await openPicker(page, context);
   await panel.getByLabel('Start Time', { exact: true }).fill('21:00');
   await smart(page);
-  await expect(page.getByText('No rooms found: No rooms fit this group and duration within opening hours.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No rooms found: No rooms fit this group with at least 30 minutes available within opening hours.', { exact: true })).toBeVisible();
   await panel.getByLabel('Start Time', { exact: true }).fill('13:00');
   await page.route('**/rest/v1/bookings*', route => route.fulfill({ status: 500, json: { message: 'Local availability failure' } }));
   await smart(page);

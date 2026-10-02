@@ -89,8 +89,11 @@ export function rankRooms<T extends RoomCandidate>(groupSize: number, rooms: T[]
       return { room, fit: groupSize >= min ? min : -min,
         issues: (room.dynamic_labels ?? []).length, ...getRoomAvailability(room.id, bookings, request) };
     })
-    .filter(room => room.minutesAvailable >= duration)
+    .filter(room => room.minutesAvailable >= 30)
     .sort((a, b) => {
+      const aFitsDuration = a.minutesAvailable >= duration;
+      const bFitsDuration = b.minutesAvailable >= duration;
+      if (aFitsDuration !== bFitsDuration) return aFitsDuration ? -1 : 1;
       if (a.fit !== b.fit) return b.fit - a.fit;
       if (!!a.lateMinutes !== !!b.lateMinutes) return a.lateMinutes ? 1 : -1;
       if (!a.lateMinutes && a.minutesAvailable !== b.minutesAvailable) return b.minutesAvailable - a.minutesAvailable;

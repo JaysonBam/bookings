@@ -179,13 +179,14 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
 
   const [hoursReady, setHoursReady] = useState(false);
   const smartRequestId = useRef(0);
+  const smartRequestedDuration = useRef("");
 
   useEffect(() => {
     smartRequestId.current += 1;
     setIsSmartSelecting(false);
     setRankedRooms([]);
     setCurrentRankIndex(0);
-  }, [open, startDate, startClock, duration, openingHours, rooms, currentTime]);
+  }, [open, startDate, startClock, openingHours, rooms, currentTime]);
 
   useEffect(() => {
     if (!open) return;
@@ -308,6 +309,14 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setSelectedBorrowed((s) => ({ ...s, [item]: !s[item] }));
   };
 
+  const selectSmartRoom = (room: any, bookings = dayBookings) => {
+    setRoomId(String(room.id));
+    if (smartRequestedDuration.current) {
+      const { minutesAvailable } = getRoomAvailability(room.id, bookings, roomRequest);
+      setDuration(String(Math.min(Number(smartRequestedDuration.current), Math.floor(minutesAvailable / 30) * 30)));
+    }
+  };
+
   const handleSmartSelect = async () => {
     if (!hoursReady) {
       showToast("Unavailable", "Opening hours have not loaded. Please reopen the booking form.", "info");
@@ -333,12 +342,13 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     if (ranked.length === 0) {
       setIsSmartSelecting(false);
       setRankedRooms([]);
-      showToast("No rooms found", "No rooms fit this group and duration within opening hours.", "info");
+      showToast("No rooms found", "No rooms fit this group with at least 30 minutes available within opening hours.", "info");
       return;
     }
     setRankedRooms(ranked);
     setCurrentRankIndex(0);
-    setRoomId(String(ranked[0].id));
+    smartRequestedDuration.current = duration;
+    selectSmartRoom(ranked[0], bookings);
     setIsSmartSelecting(true);
   };
 
@@ -346,7 +356,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       if (rankedRooms.length === 0) return;
       const nextIndex = (currentRankIndex + 1) % rankedRooms.length;
       setCurrentRankIndex(nextIndex);
-      setRoomId(String(rankedRooms[nextIndex].id));
+      selectSmartRoom(rankedRooms[nextIndex]);
   };
 
   const mapDatabaseError = (error: any): string => {
@@ -1240,7 +1250,13 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                     fullWidth
                                     label="Duration"
                                     value={duration}
-                                    onChange={e => setDuration(e.target.value)}
+                                    onChange={e => {
+                                        setDuration(e.target.value);
+                                        smartRequestId.current += 1;
+                                        setIsSmartSelecting(false);
+                                        setRankedRooms([]);
+                                        setCurrentRankIndex(0);
+                                    }}
                                     error={!!errors.duration}
                                     SelectProps={{
                                         renderValue: (val: unknown) => {
