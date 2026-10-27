@@ -1,3 +1,6 @@
+import { isBookingDate, isBookingTime } from "../../lib/bookingEntry";
+import { DateInput } from "../../components/DateInput";
+import { TimeInput } from "../../components/TimeInput";
 /**
  * Purpose: Module logic for pages\settings\page.tsx.
  */
@@ -197,6 +200,12 @@ export default function SettingsPage() {
   }
 
   async function saveAllRooms() {
+    if (!isBookingTime(opStart) || !isBookingTime(opEnd) || opEnd <= opStart ||
+      (satEnabled && (!isBookingTime(satStart) || !isBookingTime(satEnd) || satEnd <= satStart)) ||
+      (testingEnabled && (!isBookingDate(testingDate) || !isBookingTime(testingTime)))) {
+      setSnackbar({ open: true, message: "Check the date and times. Use DD/MM/YYYY and HH:mm; closing time must be after opening time.", severity: "error" });
+      return;
+    }
     setSavingAll(true);
     try {
       if (deletedRoomIds.length) await supabase.from("rooms").delete().in("id", deletedRoomIds);
@@ -317,20 +326,18 @@ export default function SettingsPage() {
               </Box>
               <Divider sx={{ mb: 2 }} />
               <Stack direction="row" spacing={2} alignItems="center">
-                <TextField
+                <TimeInput
                   label="Start Time"
-                  type="time"
                   value={opStart}
-                  onChange={(e) => setOpStart(e.target.value)}
+                  onChange={setOpStart}
                   InputLabelProps={{ shrink: true }}
                   fullWidth
                   size="small"
                 />
-                <TextField
+                <TimeInput
                   label="End Time"
-                  type="time"
                   value={opEnd}
-                  onChange={(e) => setOpEnd(e.target.value)}
+                  onChange={setOpEnd}
                   InputLabelProps={{ shrink: true }}
                   fullWidth
                   size="small"
@@ -347,20 +354,18 @@ export default function SettingsPage() {
               </Box>
               {satEnabled && (
                 <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 1 }}>
-                  <TextField
+                  <TimeInput
                     label="Saturday Start"
-                    type="time"
                     value={satStart}
-                    onChange={(e) => setSatStart(e.target.value)}
+                    onChange={setSatStart}
                     InputLabelProps={{ shrink: true }}
                     fullWidth
                     size="small"
                   />
-                  <TextField
+                  <TimeInput
                     label="Saturday End"
-                    type="time"
                     value={satEnd}
-                    onChange={(e) => setSatEnd(e.target.value)}
+                    onChange={setSatEnd}
                     InputLabelProps={{ shrink: true }}
                     fullWidth
                     size="small"
@@ -385,35 +390,13 @@ export default function SettingsPage() {
                         onChange={(e) => setTestingEnabled(e.target.checked)} 
                     />
                 </Box>
-                <Stack direction="row" spacing={2}>
-                    <TextField
-                    label="Test Date"
-                    type="date"
-                    value={testingDate}
-                    onChange={(e) => setTestingDate(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    disabled={!testingEnabled}
-                    fullWidth
-                    size="small"
-                    sx={{
-                      '& input[type="date"]': {
-                        colorScheme: (theme) => theme.palette.mode,
-                      },
-                      '& input[type="date"]::-webkit-calendar-picker-indicator': {
-                        cursor: 'pointer',
-                        opacity: 1,
-                        filter: (theme) =>
-                          theme.palette.mode === 'dark'
-                            ? 'invert(1) grayscale(1) brightness(2)'
-                            : 'invert(0) brightness(0.4)',
-                      },
-                    }}
-                    />
-                    <TextField
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <DateInput label="Test Date" value={testingDate} onChange={setTestingDate}
+                      disabled={!testingEnabled} fullWidth size="small" helperText="DD/MM/YYYY" />
+                    <TimeInput
                     label="Test Time"
-                    type="time"
                     value={testingTime}
-                    onChange={(e) => setTestingTime(e.target.value)}
+                    onChange={setTestingTime}
                     InputLabelProps={{ shrink: true }}
                     disabled={!testingEnabled}
                     fullWidth

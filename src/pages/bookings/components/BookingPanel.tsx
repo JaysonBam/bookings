@@ -7,18 +7,59 @@ import {
     Button, TextField, Select, MenuItem, InputLabel, FormControl, 
     FormControlLabel, Checkbox, Switch, Box, Typography, 
     CircularProgress, IconButton, Grid,
-    FormHelperText
+    FormHelperText, Alert
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import { supabase } from "../../../lib/supabaseClient";
-import { format, parseISO, addMinutes, eachDayOfInterval, isBefore, differenceInMinutes, isSameDay } from "date-fns";
+import { format, parseISO, addMinutes, eachDayOfInterval, differenceInCalendarDays, differenceInMinutes, isSameDay } from "date-fns";
 import { getRoomAvailability, isReclaimableReservation, rankRooms } from "../../../lib/roomRecommendations";
 import timeLib from "../../../lib/time";
 import { useConfirm } from "../context/ConfirmDialogContext";
 import { useNow } from "../context/NowContext";
 import { DateInput } from "../../../components/DateInput";
+import { TimeInput } from "../../../components/TimeInput";
+import { displayBookingDate, validateSchedule, validateBulkRanges, timeMinutes, type BookingRange } from "../../../lib/bookingEntry";
 
 import { logEvent } from "../../../lib/log";
+
+interface BookingRangeSectionProps {
+  kind: 'date' | 'time';
+  ranges: BookingRange[];
+  errors: Record<string, string>;
+  validationErrors: Record<string, string>;
+  onAdd: () => void;
+  onChange: (id: string, field: 'start' | 'end', value: string) => void;
+  onRemove: (id: string, index: number) => void;
+}
+
+function BookingRangeSection({ kind, ranges, errors, validationErrors, onAdd, onChange, onRemove }: BookingRangeSectionProps) {
+  const isDate = kind === 'date';
+  const Input = isDate ? DateInput : TimeInput;
+  const sectionError = errors[isDate ? 'bulkDates' : 'bulkTimes'];
+  return <>
+    <Typography variant="subtitle2" gutterBottom>{isDate ? 'Date ranges' : 'Time ranges'}</Typography>
+    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+      {isDate ? 'Use DD/MM/YYYY. Include both the first and last day.' : '24-hour time (HH:mm), in 30-minute intervals. Each range applies to every selected day.'}
+    </Typography>
+    {ranges.map((range, index) => (
+      <Box key={range.id} sx={{ display: 'grid', gridTemplateColumns: isDate ? { xs: 'minmax(0, 1fr) auto', sm: 'minmax(0, 1fr) minmax(0, 1fr) auto' } : 'minmax(0, 1fr) minmax(0, 1fr) auto', gap: 1, mb: 2, alignItems: 'start' }}>
+        {(['start', 'end'] as const).map(field => {
+          const label = `${field === 'start' ? 'Start' : 'End'} ${kind}`;
+          const key = `${range.id}.${field}`;
+          const message = errors[key] ? validationErrors[key] : undefined;
+          return <Input key={field} id={`${range.id}-${field}`} fullWidth size="small" label={label}
+            sx={isDate ? { gridColumn: { xs: 1, sm: 'auto' } } : undefined}
+            value={range[field]} inputProps={{ 'aria-label': `${label}, range ${index + 1}` }}
+            onChange={value => onChange(range.id, field, value)} error={!!message} helperText={message} />;
+        })}
+        <IconButton aria-label={`Remove ${kind} range ${index + 1}`} onClick={() => onRemove(range.id, index)}
+          sx={isDate ? { gridColumn: { xs: 2, sm: 'auto' }, gridRow: { xs: '1 / span 2', sm: 'auto' } } : undefined}><CloseIcon /></IconButton>
+      </Box>
+    ))}
+    <Button id={`add-${kind}-range`} aria-invalid={!!sectionError && !ranges.length} size="small" onClick={onAdd}>Add {kind} range</Button>
+    {!ranges.length && sectionError && <FormHelperText error>{sectionError}</FormHelperText>}
+  </>;
+}
 
 interface BookingPanelProps {
   open: boolean;
@@ -37,6 +78,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const { currentTime } = useNow();
 
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const [roomId, setRoomId] = useState<string>(() => {
     if (prefill?.booking) return String(prefill.booking.room_id)
@@ -148,28 +190,43 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   const [availability, setAvailability] = useState<{ date: string; bookings: any[] } | null>(null);
   const availabilityReady = availability?.date === startDate;
   const dayBookings = useMemo(() => availabilityReady ? availability!.bookings : [], [availability, availabilityReady]);
-  const [errors, setErrors] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const contentRef = useRef<HTMLDivElement>(null);
+  const clearFieldError = (key: string) => setErrors(previous => {
+    const next = { ...previous };
+    delete next[key];
+    return next;
+  });
+  const showFieldErrors = (next: Record<string, string>) => {
+    setErrors(next);
+    if (Object.keys(next).length) requestAnimationFrame(() => {
+      contentRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+    });
+  };
 
   const [isBulkEdit, setIsBulkEdit] = useState(false);
   const [bulkGroupBookings, setBulkGroupBookings] = useState<any[]>([]);
+  const [groupReady, setGroupReady] = useState(false);
 
   useEffect(() => {
-      if (prefill?.booking?.bulk_booking_id) {
-          setIsBulkEdit(true);
-          const fetchGroup = async () => {
-              const { data } = await supabase.from('bookings').select('*').eq('bulk_booking_id', prefill.booking.bulk_booking_id);
-              if (data) setBulkGroupBookings(data);
-          };
-          fetchGroup();
-      } else {
-          setIsBulkEdit(false);
-          setBulkGroupBookings([]);
-      }
+    let cancelled = false;
+    setGroupReady(false);
+    setBulkGroupBookings([]);
+    setIsBulkEdit(!!prefill?.booking?.bulk_booking_id);
+    if (prefill?.booking?.bulk_booking_id) {
+      supabase.from('bookings').select('*').eq('bulk_booking_id', prefill.booking.bulk_booking_id).then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data?.length) { setSaveError("Could not load the bulk group. Reopen the booking to try again."); return; }
+        setBulkGroupBookings(data);
+        setGroupReady(true);
+      });
+    }
+    return () => { cancelled = true; };
   }, [prefill?.booking]);
 
   const [isBulkBooking, setIsBulkBooking] = useState(false);
-  const [bulkDates, setBulkDates] = useState<{ start: string; end: string }[]>([{ start: "", end: "" }]);
-  const [bulkTimes, setBulkTimes] = useState<{ start: string; end: string }[]>([{ start: "", end: "" }]);
+  const [bulkDates, setBulkDates] = useState<BookingRange[]>([{ id: crypto.randomUUID(), start: "", end: "" }]);
+  const [bulkTimes, setBulkTimes] = useState<BookingRange[]>([{ id: crypto.randomUUID(), start: "", end: "" }]);
   const [bulkRoomIds, setBulkRoomIds] = useState<string[]>([]);
 
   const [isSmartSelecting, setIsSmartSelecting] = useState(false);
@@ -229,7 +286,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     openingHours, excludeBookingId: prefill?.booking?.id }), [startDate, startClock, currentTime, openingHours, prefill?.booking?.id]);
 
   const availableDurationOptions = useMemo(() => {
-    if (!availabilityReady || !hoursReady) return duration ? [Number(duration)] : [];
+    if (!availabilityReady || !hoursReady || !startClock) return duration ? [Number(duration)] : [];
     const { minutesAvailable: maxDuration } = getRoomAvailability(roomId, dayBookings, roomRequest);
     const options: number[] = [];
     for (let d = 30; d <= maxDuration && d <= 120; d += 30) options.push(d);
@@ -271,7 +328,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
   }, [startClock, duration, dayBookings, prefill?.booking, roomId, openingHours]);
 
   useEffect(() => {
-    if (!availabilityReady || !hoursReady) return;
+    if (!availabilityReady || !hoursReady || isBulkEdit) return;
     const currentDur = parseInt(duration);
     if (availableDurationOptions.length > 0) {
         if (!duration || Number.isNaN(currentDur)) {
@@ -285,7 +342,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     } else {
         if (duration !== "") setDuration("");
     }
-  }, [availableDurationOptions, duration, prefill?.booking, availabilityReady, hoursReady]);
+  }, [availableDurationOptions, duration, prefill?.booking, availabilityReady, hoursReady, isBulkEdit]);
 
   useEffect(() => {
     const r = rooms.find((x) => String(x.id) === String(roomId));
@@ -373,6 +430,27 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       try {
           const extensionMins = selectedExtension ? parseInt(selectedExtension, 10) : 0;
           
+          const { data: group, error: groupError } = await supabase.from('bookings').select('*').eq('bulk_booking_id', prefill.booking.bulk_booking_id);
+          if (groupError) throw groupError;
+          if (!group?.length) throw new Error("This group no longer exists. Reopen the booking.");
+          const { data: targetBookings, error: targetError } = await supabase.from('bookings')
+            .select('id, room_id, start_time, end_time').eq('booking_day', startDate);
+          if (targetError) throw targetError;
+          const groupIds = new Set(group.map(booking => String(booking.id)));
+          const groupRooms = new Set(group.map(booking => String(booking.room_id)));
+          const startMins = timeMinutes(startClock);
+          const endMins = startMins + Number(duration) + extensionMins;
+          if (endMins > timeMinutes(openingHours.end)) throw new Error(`The booking must end by ${openingHours.end}.`);
+          if (extensionMins && (startDate !== prefill.booking.booking_day || startClock !== prefill.booking.start_time.slice(0, 5) || Number(duration) !== differenceInMinutes(parseISO(`${prefill.booking.booking_day}T${prefill.booking.end_time}`), parseISO(`${prefill.booking.booking_day}T${prefill.booking.start_time}`)))) {
+            throw new Error("Save date or time changes before extending the group.");
+          }
+          const conflict = targetBookings?.find(booking => !groupIds.has(String(booking.id)) && groupRooms.has(String(booking.room_id)) &&
+            startMins < timeMinutes(booking.end_time.slice(0, 5)) && endMins > timeMinutes(booking.start_time.slice(0, 5)));
+          if (conflict) {
+            const room = rooms.find(room => String(room.id) === String(conflict.room_id));
+            showFieldErrors({ startClock: `${room?.name || 'A room in this group'} is already booked during this time. Choose another time.` });
+            return;
+          }
           const basePayload: any = {
              booked_by: staffName,
           };
@@ -427,7 +505,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                   
               if (updateError) throw updateError;
               
-              const newBookings = bulkGroupBookings.map(b => {
+              const newBookings = group.map(b => {
                   
                   let nextStudentNumbers = b.student_numbers;
                   if (basePayload.student_numbers && basePayload.student_numbers.startsWith("bulk booking -")) {
@@ -461,16 +539,21 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
              showToast("Extended Group", `Extended ${newBookings.length} bookings`, "success");
 
           } else {
+               const end = addMinutes(parseISO(`${startDate}T${startClock}`), Number(duration));
                const updatePayload = {
                    ...basePayload,
+                   booking_day: startDate,
+                   start_time: `${startClock}:00`,
+                   end_time: format(end, "HH:mm:ss"),
                    state
                };
                
-               const { error } = await supabase.from("bookings")
+               const { data: updated, error } = await supabase.from("bookings")
                   .update(updatePayload)
-                  .eq("bulk_booking_id", prefill.booking.bulk_booking_id);
+                  .eq("bulk_booking_id", prefill.booking.bulk_booking_id).select('id');
                if (error) throw error;
-               showToast("Updated Group", `Updated ${bulkGroupBookings.length} bookings to ${state}`, "success");
+               if (!updated?.length) throw new Error("No bookings were updated. Reopen the group and try again.");
+               showToast("Updated Group", `Updated ${updated.length} bookings for ${displayBookingDate(startDate)}, ${startClock}–${format(end, 'HH:mm')}`, "success");
           }
           
           resetFormToDefaults();
@@ -478,7 +561,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
           onClose();
 
       } catch (err: any) {
-           showToast("Bulk Update Failed", mapDatabaseError(err), "error");
+           setSaveError(mapDatabaseError(err));
       } finally {
           setLoading(false);
       }
@@ -494,7 +577,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     const e = parseISO(`${prefill.booking.booking_day}T${prefill.booking.end_time}`);
     const originalDur = Math.round((e.getTime() - s.getTime())/60000);
     
-    const isTimeChanged = (currentStartClock !== originalStart) || (parseInt(currentDuration) !== originalDur);
+    const isTimeChanged = startDate !== prefill.booking.booking_day || (currentStartClock !== originalStart) || (parseInt(currentDuration) !== originalDur);
     
     const originalCourseId = prefill.booking.course_id ? String(prefill.booking.course_id) : "";
     const originalCourseName = prefill.booking.course_name ? prefill.booking.course_name : "";
@@ -524,12 +607,28 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     return { isSharedChange, isIndividualChange: isRoomChanged, isExtension };
   };
 
+  const validateDetails = () => {
+    const next = validateSchedule(startDate, startClock, duration, openingHours);
+    if (!roomId) next.roomId = 'Select a room.';
+    if (!staffName.trim()) next.staffName = 'Enter the staff name.';
+    if (!selectedCourseId) next.selectedCourseId = 'Select a course.';
+    if (selectedCourseId === 'other' && !otherCourseName.trim()) next.otherCourseName = 'Enter a course name.';
+    if (isBulkCount && totalStudents && (!/^\d+$/.test(totalStudents) || Number(totalStudents) <= 0)) next.totalStudents = 'Enter a positive whole number.';
+    showFieldErrors(next);
+    if (Object.keys(next).length) return false;
+    if (!hoursReady) { setSaveError('Opening hours have not loaded. Reopen the form and try again.'); return false; }
+    return true;
+  };
+
   const handleSave = async (state: "Active" | "Reserved" | "Ended") => {
+    setSaveError("");
     if (isBulkBooking) {
       await handleBulkSave(state);
       return;
     }
     
+    if (!validateDetails()) return;
+    if (isBulkEdit && !groupReady) { setSaveError('The bulk group has not loaded. Reopen the booking to try again.'); return; }
     let updateScope = 'single';
     if (isBulkEdit) {
         const { isSharedChange, isIndividualChange, isExtension } = analyzeChanges();
@@ -557,7 +656,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         const result = await confirm({
             title: isExtension ? "Extend Bulk Group" : "Update Bulk Group",
             description: isSharedChange 
-                ? "Changes to Time, Course, or Student Count must apply to the entire group."
+                ? `Changes to date, time, course, or student count apply to all ${bulkGroupBookings.length} bookings. New schedule: ${displayBookingDate(startDate)}, ${startClock}–${format(addMinutes(parseISO(`${startDate}T${startClock}`), Number(duration)), "HH:mm")}.`
                 : (isIndividualChange ? "Room changes can only represent this individual booking." : `This booking is part of a bulk group (${bulkGroupBookings.length} bookings).`),
             cancelText: "Cancel",
             actions: actions
@@ -576,48 +675,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         return;
     }
     
-    const newErrors: Record<string, boolean> = {};
-    if (!roomId) newErrors.roomId = true;
-    if (!startDate) newErrors.startDate = true;
-    if (!startClock) newErrors.startClock = true;
-    if (!duration) newErrors.duration = true;
-    if (!staffName?.trim()) newErrors.staffName = true;
-    if (!selectedCourseId) newErrors.selectedCourseId = true;
-    if (selectedCourseId === "other" && !otherCourseName?.trim()) newErrors.otherCourseName = true;
-
-    if (Object.keys(newErrors).length > 0) {
-        setErrors(newErrors);
-        showToast("Missing fields", "Please fill in all required fields.", "error");
-        return;
-    }
-
-    const startParts = startClock.split(":").map((s) => parseInt(s, 10));
-    const startMins = (startParts[1] ?? 0);
-    const dur = parseInt(duration, 10);
-    if (Number.isNaN(startMins) || (startMins % 30) !== 0) {
-      showToast("Invalid start time", "Start time must be on a 30-minute boundary", "error");
-      return;
-    }
-    if (Number.isNaN(dur) || dur <= 0 || (dur % 30) !== 0) {
-      showToast("Invalid duration", "Duration must be valid", "error");
-      return;
-    }
-
-    const parseTime = (t: string) => {
-        const [h, m] = t.split(':').map(Number);
-        return h * 60 + m;
-    };
-    const openMins = parseTime(openingHours.start);
-    const closeMins = parseTime(openingHours.end);
+    const dur = Number(duration);
+    const parseTime = (time: string) => timeMinutes(time.slice(0, 5));
     const bookingStartMins = parseTime(startClock);
     const bookingEndMins = bookingStartMins + dur;
-
-    if (bookingStartMins < openMins || bookingEndMins > closeMins) {
-        showToast("Invalid time", `Booking must be between ${openingHours.start} and ${openingHours.end}`, "error");
-        return;
-    }
-
-    if (!availabilityReady || !hoursReady) {
+    if (!availabilityReady) {
       showToast("Unavailable", "Availability has not loaded for this date. Please try again.", "info");
       return;
     }
@@ -886,88 +948,59 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
       onBookingUpdate?.(staffName !== prefill?.booking?.booked_by ? staffName : undefined);
       onClose();
     } catch (err: any) {
-      showToast("Save failed", mapDatabaseError(err), "error");
+      setSaveError(mapDatabaseError(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const addBulkDate = () => setBulkDates([...bulkDates, { start: "", end: "" }]);
-  const removeBulkDate = (i: number) => setBulkDates(bulkDates.filter((_, idx) => idx !== i));
-  const updateBulkDate = (i: number, field: "start" | "end", val: string) => {
-    const newDates = [...bulkDates];
-    newDates[i][field] = val;
-    setBulkDates(newDates);
+  const addBulkDate = () => setBulkDates(previous => [...previous, { id: crypto.randomUUID(), start: "", end: "" }]);
+  const addBulkTime = () => setBulkTimes(previous => [...previous, { id: crypto.randomUUID(), start: "", end: "" }]);
+  const updateBulkDate = (id: string, field: "start" | "end", value: string) => setBulkDates(previous => previous.map(row => row.id === id ? { ...row, [field]: value } : row));
+  const updateBulkTime = (id: string, field: "start" | "end", value: string) => setBulkTimes(previous => previous.map(row => row.id === id ? { ...row, [field]: value } : row));
+  const removeRange = (kind: 'date' | 'time', id: string, index: number) => {
+    const rows = kind === 'date' ? bulkDates : bulkTimes;
+    const next = rows.filter(row => row.id !== id);
+    (kind === 'date' ? setBulkDates : setBulkTimes)(next);
+    const focusId = next[Math.min(index, next.length - 1)]?.id;
+    requestAnimationFrame(() => document.getElementById(focusId ? `${focusId}-start` : `add-${kind}-range`)?.focus());
   };
-
-  const addBulkTime = () => setBulkTimes([...bulkTimes, { start: "", end: "" }]);
-  const removeBulkTime = (i: number) => setBulkTimes(bulkTimes.filter((_, idx) => idx !== i));
-  const updateBulkTime = (i: number, field: "start" | "end", val: string) => {
-    const newTimes = [...bulkTimes];
-    newTimes[i][field] = val;
-    setBulkTimes(newTimes);
-  };
+  const rangeErrors = validateBulkRanges(bulkDates, bulkTimes, openingHours);
+  const bulkCount = bulkDates.length && bulkTimes.length && !Object.keys(rangeErrors).length
+    ? bulkDates.reduce((sum, range) => sum + differenceInCalendarDays(parseISO(range.end), parseISO(range.start)) + 1, 0) * bulkTimes.length * bulkRoomIds.length : 0;
 
   const toggleBulkRoom = (rId: string) => {
+    clearFieldError("bulkRooms");
     setBulkRoomIds(prev => prev.includes(rId) ? prev.filter(id => id !== rId) : [...prev, rId]);
   };
 
   const handleBulkSave = async (state: "Active" | "Reserved" | "Ended") => {
-    const newErrors: Record<string, boolean> = {};
-    if (bulkRoomIds.length === 0) newErrors.bulkRooms = true;
-    const validDates = bulkDates.filter(d => d.start && d.end);
-    const validTimes = bulkTimes.filter(t => t.start && t.end);
-    if (validDates.length === 0) newErrors.bulkDates = true;
-    if (validTimes.length === 0) newErrors.bulkTimes = true;
-
-    const parseTime = (t: string) => {
-        const [h, m] = t.split(':').map(Number);
-        return h * 60 + m;
-    };
-    const openMins = parseTime(openingHours.start);
-    const closeMins = parseTime(openingHours.end);
-
-    for (const t of validTimes) {
-        const sMins = parseTime(t.start);
-        const eMins = parseTime(t.end);
-        if ((sMins % 30) !== 0 || (eMins % 30) !== 0) {
-            showToast("Invalid increment", "Bulk times must be in 30-minute increments", "error");
-            return;
-        }
-        if (sMins < openMins || eMins > closeMins) {
-             showToast("Invalid time", `Bulk times must be between ${openingHours.start} and ${openingHours.end}`, "error");
-             return;
-        }
+    const newErrors = validateBulkRanges(bulkDates, bulkTimes, openingHours);
+    if (!bulkDates.length) newErrors.bulkDates = 'Add at least one date range.';
+    if (!bulkTimes.length) newErrors.bulkTimes = 'Add at least one time range.';
+    if (!bulkRoomIds.length) newErrors.bulkRooms = 'Select at least one room.';
+    if (!staffName.trim()) newErrors.staffName = 'Enter the staff name.';
+    if (!selectedCourseId) newErrors.selectedCourseId = 'Select a course.';
+    if (selectedCourseId === 'other' && !otherCourseName.trim()) newErrors.otherCourseName = 'Enter a course name.';
+    showFieldErrors(newErrors);
+    if (Object.keys(newErrors).length) {
+      showToast('Check the form', 'Correct the highlighted fields. Every range must be complete.', 'error');
+      return;
     }
-
-    if (!selectedCourseId) newErrors.selectedCourseId = true;
-    if (selectedCourseId === "other" && !otherCourseName?.trim()) newErrors.otherCourseName = true;
-    if (!staffName.trim()) newErrors.staffName = true;
-
-    if (Object.keys(newErrors).length > 0) {
-        setErrors(newErrors);
-        showToast("Missing fields", "Please fill in fields", "error");
-        return;
-    }
+    if (!hoursReady) { setSaveError('Opening hours have not loaded. Reopen the form and try again.'); return; }
 
     setLoading(true);
     try {
         const bookingsToInsert: any[] = [];
-        for (const dateRange of validDates) {
+        for (const dateRange of bulkDates) {
             const startD = parseISO(dateRange.start);
             const endD = parseISO(dateRange.end);
-            if (isBefore(endD, startD)) {
-                 showToast("Invalid date range", "End before start", "error");
-                 setLoading(false);
-                 return;
-            }
             const days = eachDayOfInterval({ start: startD, end: endD });
             for (const day of days) {
                 const dayStr = format(day, "yyyy-MM-dd");
-                for (const timeRange of validTimes) {
+                for (const timeRange of bulkTimes) {
                     const tStart = timeRange.start;
                     const tEnd = timeRange.end;
-                    if (!tStart || !tEnd || tStart >= tEnd) continue;
                     
                     const clumpId = crypto.randomUUID();
 
@@ -1010,7 +1043,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         onClose();
     } catch (err: any) {
         console.error(err);
-        showToast("Save failed", mapDatabaseError(err), "error");
+        setSaveError(mapDatabaseError(err));
     } finally {
         setLoading(false);
     }
@@ -1031,13 +1064,14 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     setBorrowableItems([]);
     setSelectedState("Active");
     setIsBulkBooking(false);
-    setBulkDates([{ start: "", end: "" }]);
-    setBulkTimes([{ start: "", end: "" }]);
+    setBulkDates([{ id: crypto.randomUUID(), start: "", end: "" }]);
+    setBulkTimes([{ id: crypto.randomUUID(), start: "", end: "" }]);
     setBulkRoomIds([]);
     setIsSmartSelecting(false);
     setRankedRooms([]);
     setCurrentRankIndex(0);
     setErrors({});
+    setSaveError("");
   };
 
   const handleDelete = async () => {
@@ -1130,40 +1164,30 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                 <FormControlLabel control={<Switch checked={isBulkBooking} onChange={(e) => setIsBulkBooking(e.target.checked)} />} label="Bulk Mode" />
             )}
         </DialogTitle>
-        <DialogContent dividers sx={{ overflowX: 'hidden' }}>
+        <DialogContent ref={contentRef} dividers sx={{ overflowX: 'hidden' }}>
             {loading ? (
                 <Box display="flex" justifyContent="center" p={4}><CircularProgress /></Box>
             ) : (
                 <Grid container spacing={2}>
+                    {saveError && <Grid item xs={12}><Alert severity="error">{saveError}</Alert></Grid>}
                     {isBulkBooking ? (
                         <>
                             <Grid item xs={12}>
-                                <Typography variant="subtitle2">Date Ranges</Typography>
-                                {bulkDates.map((d, i) => (
-                                    <Box key={i} display="flex" gap={1} mb={1} alignItems="center">
-                                        <DateInput size="small" value={d.start} onChange={val => updateBulkDate(i, 'start', val)} error={!!errors.bulkDates && !d.start} />
-                                        <Typography>to</Typography>
-                                        <DateInput size="small" value={d.end} onChange={val => updateBulkDate(i, 'end', val)} error={!!errors.bulkDates && !d.end} />
-                                        <IconButton onClick={() => removeBulkDate(i)}><CloseIcon /></IconButton>
-                                    </Box>
-                                ))}
-                                <Button size="small" onClick={addBulkDate}>Add Date</Button>
+                                <BookingRangeSection kind="date" ranges={bulkDates} errors={errors} validationErrors={rangeErrors}
+                                    onAdd={addBulkDate} onChange={updateBulkDate} onRemove={(id, index) => removeRange('date', id, index)} />
                             </Grid>
                             <Grid item xs={12}>
-                                <Typography variant="subtitle2">Time Ranges (HH:mm)</Typography>
-                                {bulkTimes.map((t, i) => (
-                                    <Box key={i} display="flex" gap={1} mb={1} alignItems="center">
-                                        <TextField type="time" size="small" value={t.start} onChange={e => updateBulkTime(i, 'start', e.target.value)} error={!!errors.bulkTimes && !t.start} inputProps={{ step: 1800 }} />
-                                        <Typography>to</Typography>
-                                        <TextField type="time" size="small" value={t.end} onChange={e => updateBulkTime(i, 'end', e.target.value)} error={!!errors.bulkTimes && !t.end} inputProps={{ step: 1800 }} />
-                                        <IconButton onClick={() => removeBulkTime(i)}><CloseIcon /></IconButton>
-                                    </Box>
-                                ))}
-                                <Button size="small" onClick={addBulkTime}>Add Time</Button>
+                                <BookingRangeSection kind="time" ranges={bulkTimes} errors={errors} validationErrors={rangeErrors}
+                                    onAdd={addBulkTime} onChange={updateBulkTime} onRemove={(id, index) => removeRange('time', id, index)} />
+                            </Grid>
+                            <Grid item xs={12}>
+                                <Box role="status" sx={{ bgcolor: 'action.hover', borderRadius: 1, px: 2, py: 1.5 }}>
+                                    <Typography variant="body2" fontWeight={600}>{bulkCount ? `${bulkCount} bookings ready to create` : 'Complete the ranges and select rooms to preview your booking count.'}</Typography>
+                                </Box>
                             </Grid>
                              <Grid item xs={12}>
-                                <Typography variant="subtitle2">Rooms</Typography>
-                                <Box sx={{ border: 1, borderColor: 'divider', p: 1, maxHeight: 150, overflow: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                                <Typography id="bulk-rooms-label" variant="subtitle2">Rooms</Typography>
+                                <Box role="group" aria-labelledby="bulk-rooms-label" aria-invalid={!!errors.bulkRooms && !bulkRoomIds.length} tabIndex={-1} sx={{ border: 1, borderColor: 'divider', p: 1, maxHeight: 150, overflow: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                                     {rooms.map(r => (
                                         <FormControlLabel key={r.id} control={<Checkbox checked={bulkRoomIds.includes(String(r.id))} onChange={() => toggleBulkRoom(String(r.id))} />} label={r.name} />
                                     ))}
@@ -1171,7 +1195,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                 {errors.bulkRooms && <FormHelperText error>Select at least one room</FormHelperText>}
                             </Grid>
                             <Grid item xs={12}>
-                                <TextField fullWidth label="Staff Name" value={staffName} onChange={e => { setStaffName(e.target.value); setIsNameManuallyTyped(true); }} error={!!errors.staffName} />
+                                <TextField fullWidth label="Staff Name" value={staffName} onChange={e => { setStaffName(e.target.value); setIsNameManuallyTyped(true); clearFieldError("staffName"); }} error={!!errors.staffName} helperText={errors.staffName} />
                             </Grid>
                             
                         </>
@@ -1184,8 +1208,9 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                         fullWidth 
                                         label="Room" 
                                         value={roomId} 
-                                        onChange={(e) => setRoomId(e.target.value)}
+                                        onChange={(e) => { setRoomId(e.target.value); clearFieldError("roomId"); }}
                                         error={!!errors.roomId}
+                                        helperText={errors.roomId}
                                     >
                                         {rooms.map(r => {
                                             const status = getRoomStatus(String(r.id));
@@ -1238,13 +1263,13 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                     )}
                                 </Box>
                             </Grid>
-                            <Grid item xs={6}>
-                                <DateInput fullWidth label="Date" value={startDate} onChange={val => setStartDate(val)} error={!!errors.startDate} InputLabelProps={{ shrink: true }} />
+                            <Grid item xs={12} sm={6}>
+                                <DateInput fullWidth label="Date" value={startDate} onChange={val => { setStartDate(val); clearFieldError("startDate"); }} helperText={errors.startDate || "DD/MM/YYYY"} error={!!errors.startDate} InputLabelProps={{ shrink: true }} />
                             </Grid>
-                            <Grid item xs={6}>
-                                <TextField type="time" fullWidth label="Start Time" value={startClock} onChange={e => setStartClock(e.target.value)} error={!!errors.startClock} InputLabelProps={{ shrink: true }} inputProps={{ step: 1800 }} />
+                            <Grid item xs={12} sm={6}>
+                                <TimeInput fullWidth label="Start Time" value={startClock} onChange={value => { setStartClock(value); clearFieldError("startClock"); }} error={!!errors.startClock} helperText={errors.startClock || "24-hour time · 30-minute intervals"} />
                             </Grid>
-                            <Grid item xs={6}>
+                            <Grid item xs={12} sm={6}>
                                 <TextField
                                     select
                                     fullWidth
@@ -1252,12 +1277,14 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                     value={duration}
                                     onChange={e => {
                                         setDuration(e.target.value);
+                                        clearFieldError("duration");
                                         smartRequestId.current += 1;
                                         setIsSmartSelecting(false);
                                         setRankedRooms([]);
                                         setCurrentRankIndex(0);
                                     }}
                                     error={!!errors.duration}
+                                    helperText={errors.duration}
                                     SelectProps={{
                                         renderValue: (val: unknown) => {
                                             if (!val) return '';
@@ -1285,22 +1312,23 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                     })}
                                 </TextField>
                             </Grid>
-                             <Grid item xs={6}>
-                                <TextField fullWidth label="Staff Name" value={staffName} onChange={e => { setStaffName(e.target.value); setIsNameManuallyTyped(true); }} error={!!errors.staffName} />
+                             <Grid item xs={12} sm={6}>
+                                <TextField fullWidth label="Staff Name" value={staffName} onChange={e => { setStaffName(e.target.value); setIsNameManuallyTyped(true); clearFieldError("staffName"); }} error={!!errors.staffName} helperText={errors.staffName} />
                             </Grid>
                         </>
                     )}
                     
                     <Grid item xs={12}>
                         <FormControl fullWidth error={!!errors.selectedCourseId}>
-                            <InputLabel>Course</InputLabel>
-                            <Select value={selectedCourseId} onChange={e => setSelectedCourseId(e.target.value as string)} label="Course">
+                            <InputLabel id="booking-course-label">Course</InputLabel>
+                            <Select labelId="booking-course-label" value={selectedCourseId} onChange={e => { setSelectedCourseId(e.target.value as string); clearFieldError("selectedCourseId"); }} label="Course">
                                 {courses.map(c => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}
                                 <MenuItem value="other">Other</MenuItem>
                             </Select>
+                            {errors.selectedCourseId && <FormHelperText>{errors.selectedCourseId}</FormHelperText>}
                         </FormControl>
                         {selectedCourseId === "other" && (
-                            <TextField fullWidth sx={{ mt: 1 }} label="Course Name" value={otherCourseName} onChange={e => setOtherCourseName(e.target.value)} error={!!errors.otherCourseName} />
+                            <TextField fullWidth sx={{ mt: 1 }} label="Course Name" value={otherCourseName} onChange={e => { setOtherCourseName(e.target.value); clearFieldError("otherCourseName"); }} error={!!errors.otherCourseName} helperText={errors.otherCourseName} />
                         )}
                     </Grid>
 
@@ -1313,8 +1341,8 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                         fullWidth 
                                         label="Total Students (Entire Bulk Group)" 
                                         value={totalStudents} 
-                                        onChange={e => setTotalStudents(e.target.value)} 
-                                        helperText="This count is shared across the bulk group"
+                                        onChange={e => { setTotalStudents(e.target.value); clearFieldError("totalStudents"); }}
+                                        error={!!errors.totalStudents} helperText={errors.totalStudents || "This count is shared across the bulk group"}
                                     />
                                 ) : (
                                     <TextField multiline rows={3} fullWidth label="Student Numbers" value={studentNumbers} onChange={e => setStudentNumbers(e.target.value)} />
@@ -1335,7 +1363,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                 </Grid>
             )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
              {prefill?.booking ? (
                  <>
                     <Box flexGrow={1} display="flex" gap={1}>
