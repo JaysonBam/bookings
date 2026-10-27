@@ -392,7 +392,7 @@ export default function SettingsPage() {
                 </Box>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                     <DateInput label="Test Date" value={testingDate} onChange={setTestingDate}
-                      disabled={!testingEnabled} fullWidth size="small" helperText="DD/MM/YYYY" />
+                      disabled={!testingEnabled} fullWidth size="small" />
                     <TimeInput
                     label="Test Time"
                     value={testingTime}
