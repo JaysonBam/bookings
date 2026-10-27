@@ -85,7 +85,6 @@ export function DateInput({ value, onChange, onBlur, onKeyDown, label, error, he
         <Button size="small" onClick={() => moveFocus(new Date())}>Today</Button>
         <Button size="small" onClick={closeCalendar}>Close calendar</Button>
       </Box>
-      <Typography variant="caption" color="text.secondary">DD/MM/YYYY · Arrow keys move between days</Typography>
     </Popover>
   </>;
 }

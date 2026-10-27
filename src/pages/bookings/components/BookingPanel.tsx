@@ -11,11 +11,12 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import { supabase } from "../../../lib/supabaseClient";
-import { format, parseISO, addMinutes, eachDayOfInterval, differenceInCalendarDays, differenceInMinutes, isSameDay } from "date-fns";
+import { format, parseISO, addMinutes, eachDayOfInterval, differenceInMinutes, isSameDay } from "date-fns";
 import { getRoomAvailability, isReclaimableReservation, rankRooms } from "../../../lib/roomRecommendations";
 import timeLib from "../../../lib/time";
 import { useConfirm } from "../context/ConfirmDialogContext";
 import { useNow } from "../context/NowContext";
+import { ContextHelp } from "../../../components/ContextHelp";
 import { DateInput } from "../../../components/DateInput";
 import { TimeInput } from "../../../components/TimeInput";
 import { displayBookingDate, validateSchedule, validateBulkRanges, timeMinutes, type BookingRange } from "../../../lib/bookingEntry";
@@ -38,9 +39,6 @@ function BookingRangeSection({ kind, ranges, errors, validationErrors, onAdd, on
   const sectionError = errors[isDate ? 'bulkDates' : 'bulkTimes'];
   return <>
     <Typography variant="subtitle2" gutterBottom>{isDate ? 'Date ranges' : 'Time ranges'}</Typography>
-    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-      {isDate ? 'Use DD/MM/YYYY. Include both the first and last day.' : '24-hour time (HH:mm), in 30-minute intervals. Each range applies to every selected day.'}
-    </Typography>
     {ranges.map((range, index) => (
       <Box key={range.id} sx={{ display: 'grid', gridTemplateColumns: isDate ? { xs: 'minmax(0, 1fr) auto', sm: 'minmax(0, 1fr) minmax(0, 1fr) auto' } : 'minmax(0, 1fr) minmax(0, 1fr) auto', gap: 1, mb: 2, alignItems: 'start' }}>
         {(['start', 'end'] as const).map(field => {
@@ -74,6 +72,7 @@ interface BookingPanelProps {
 }
 
 export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefill = null, defaultStaffName = "", showToast = () => {}, onBookingUpdate, rooms, courses, creationStartTime }) => {
+  const helpId = React.useId();
   const { confirm } = useConfirm();
   const { currentTime } = useNow();
 
@@ -553,7 +552,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                   .eq("bulk_booking_id", prefill.booking.bulk_booking_id).select('id');
                if (error) throw error;
                if (!updated?.length) throw new Error("No bookings were updated. Reopen the group and try again.");
-               showToast("Updated Group", `Updated ${updated.length} bookings for ${displayBookingDate(startDate)}, ${startClock}–${format(end, 'HH:mm')}`, "success");
+               showToast("Updated Group", `Updated ${updated.length} bookings for ${displayBookingDate(startDate)}, ${startClock}â€“${format(end, 'HH:mm')}`, "success");
           }
           
           resetFormToDefaults();
@@ -656,7 +655,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
         const result = await confirm({
             title: isExtension ? "Extend Bulk Group" : "Update Bulk Group",
             description: isSharedChange 
-                ? `Changes to date, time, course, or student count apply to all ${bulkGroupBookings.length} bookings. New schedule: ${displayBookingDate(startDate)}, ${startClock}–${format(addMinutes(parseISO(`${startDate}T${startClock}`), Number(duration)), "HH:mm")}.`
+                ? `Changes to date, time, course, or student count apply to all ${bulkGroupBookings.length} bookings. New schedule: ${displayBookingDate(startDate)}, ${startClock}â€“${format(addMinutes(parseISO(`${startDate}T${startClock}`), Number(duration)), "HH:mm")}.`
                 : (isIndividualChange ? "Room changes can only represent this individual booking." : `This booking is part of a bulk group (${bulkGroupBookings.length} bookings).`),
             cancelText: "Cancel",
             actions: actions
@@ -966,9 +965,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     requestAnimationFrame(() => document.getElementById(focusId ? `${focusId}-start` : `add-${kind}-range`)?.focus());
   };
   const rangeErrors = validateBulkRanges(bulkDates, bulkTimes, openingHours);
-  const bulkCount = bulkDates.length && bulkTimes.length && !Object.keys(rangeErrors).length
-    ? bulkDates.reduce((sum, range) => sum + differenceInCalendarDays(parseISO(range.end), parseISO(range.start)) + 1, 0) * bulkTimes.length * bulkRoomIds.length : 0;
-
   const toggleBulkRoom = (rId: string) => {
     clearFieldError("bulkRooms");
     setBulkRoomIds(prev => prev.includes(rId) ? prev.filter(id => id !== rId) : [...prev, rId]);
@@ -1147,8 +1143,11 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
     } catch (e) { return false; }
   }, [currentTime, startDate, startClock]);
 
+  const helpDescription = 'Dates use day/month/year (DD/MM/YYYY), for example 16/12/2026. Times use 24-hour HH:mm in 30-minute intervals, for example 08:00 or 08:30.' +
+    (isBulkBooking ? ' Date ranges include both the first and last day. Each time range applies to every selected day and room.' : '');
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth aria-describedby={helpId}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Box>
                 {isBulkEdit 
@@ -1159,6 +1158,7 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                     ? (totalStudents && ` - ${totalStudents} students`) 
                     : (studentNumbers && ` - ${studentNumbers.split('\n').filter(l => l.trim()).length} students`)
                 }
+                <ContextHelp id={helpId} label="Booking help" description={helpDescription} />
             </Box>
             {!prefill?.booking && (
                 <FormControlLabel control={<Switch checked={isBulkBooking} onChange={(e) => setIsBulkBooking(e.target.checked)} />} label="Bulk Mode" />
@@ -1179,11 +1179,6 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                             <Grid item xs={12}>
                                 <BookingRangeSection kind="time" ranges={bulkTimes} errors={errors} validationErrors={rangeErrors}
                                     onAdd={addBulkTime} onChange={updateBulkTime} onRemove={(id, index) => removeRange('time', id, index)} />
-                            </Grid>
-                            <Grid item xs={12}>
-                                <Box role="status" sx={{ bgcolor: 'action.hover', borderRadius: 1, px: 2, py: 1.5 }}>
-                                    <Typography variant="body2" fontWeight={600}>{bulkCount ? `${bulkCount} bookings ready to create` : 'Complete the ranges and select rooms to preview your booking count.'}</Typography>
-                                </Box>
                             </Grid>
                              <Grid item xs={12}>
                                 <Typography id="bulk-rooms-label" variant="subtitle2">Rooms</Typography>
@@ -1264,10 +1259,10 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                                 </Box>
                             </Grid>
                             <Grid item xs={12} sm={6}>
-                                <DateInput fullWidth label="Date" value={startDate} onChange={val => { setStartDate(val); clearFieldError("startDate"); }} helperText={errors.startDate || "DD/MM/YYYY"} error={!!errors.startDate} InputLabelProps={{ shrink: true }} />
+                                <DateInput fullWidth label="Date" value={startDate} onChange={val => { setStartDate(val); clearFieldError("startDate"); }} helperText={errors.startDate} error={!!errors.startDate} InputLabelProps={{ shrink: true }} />
                             </Grid>
                             <Grid item xs={12} sm={6}>
-                                <TimeInput fullWidth label="Start Time" value={startClock} onChange={value => { setStartClock(value); clearFieldError("startClock"); }} error={!!errors.startClock} helperText={errors.startClock || "24-hour time · 30-minute intervals"} />
+                                <TimeInput fullWidth label="Start Time" value={startClock} onChange={value => { setStartClock(value); clearFieldError("startClock"); }} error={!!errors.startClock} helperText={errors.startClock} />
                             </Grid>
                             <Grid item xs={12} sm={6}>
                                 <TextField
