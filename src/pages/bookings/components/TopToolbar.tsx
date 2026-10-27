@@ -56,9 +56,10 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <DateInput
                 size="small"
+                label="Calendar date"
                 value={format(selectedDate, 'yyyy-MM-dd')}
                 onChange={handleDateChange}
-                sx={{ width: 160, bgcolor: 'background.paper', borderRadius: 1 }}
+                sx={{ width: 180, bgcolor: 'background.paper', borderRadius: 1 }}
             />
 
             <Button variant="outlined" color="inherit" size="small" onClick={handleToday}>TODAY</Button>

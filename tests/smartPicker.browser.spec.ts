@@ -12,7 +12,7 @@ const prepareContext = (context: BrowserContext, account: Account, appOrigin?: s
 
 const panelFor = (page: Page) => page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: /^New Booking/ }) });
 async function setDate(input: ReturnType<Page['getByLabel']>, value: string) {
-  await input.focus(); await input.fill(value); await input.press('Tab');
+  await input.focus(); await input.fill(value.split('-').reverse().join('/')); await input.press('Tab');
 }
 async function openPicker(page: Page, context: BrowserContext) {
   await db.exec(`delete from bookings;

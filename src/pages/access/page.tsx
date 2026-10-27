@@ -43,6 +43,7 @@ import { useTheme } from '@mui/material/styles'
 import { styles as makeStyles } from './styles'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabaseClient'
+import { format } from 'date-fns'
 import { accessDurations, formatAccessExpiry, hasProfileAccess } from '../../lib/accessExpiry'
 import {
   addHexForgeProfile,
@@ -423,7 +424,7 @@ export default function AccessPage() {
                   />
                 </TableCell>
                 <TableCell>
-                  <Tooltip title={profile.access_expires_at ? new Date(profile.access_expires_at).toLocaleString() : 'Never'}>
+                  <Tooltip title={profile.access_expires_at ? format(new Date(profile.access_expires_at), 'dd/MM/yyyy HH:mm') : 'Never'}>
                     <span>{formatAccessExpiry(profile.access_expires_at)}</span>
                   </Tooltip>
                 </TableCell>
