@@ -1183,10 +1183,13 @@ export const BookingPanel: React.FC<BookingPanelProps> = ({ open, onClose, prefi
                              <Grid item xs={12}>
                                 <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
                                     <Typography id="bulk-rooms-label" variant="subtitle2">Rooms</Typography>
-                                    <Button size="small" disabled={rooms.every(r => bulkRoomIds.includes(String(r.id)))} onClick={() => {
-                                        clearFieldError("bulkRooms");
-                                        setBulkRoomIds(rooms.map(r => String(r.id)));
-                                    }}>Select all</Button>
+                                    <Box display="flex" gap={1}>
+                                        {bulkRoomIds.length > 0 && <Button size="small" onClick={() => setBulkRoomIds([])}>Clear</Button>}
+                                        {rooms.some(r => !bulkRoomIds.includes(String(r.id))) && <Button size="small" onClick={() => {
+                                            clearFieldError("bulkRooms");
+                                            setBulkRoomIds(rooms.map(r => String(r.id)));
+                                        }}>Select all</Button>}
+                                    </Box>
                                 </Box>
                                 <Box role="group" aria-labelledby="bulk-rooms-label" aria-invalid={!!errors.bulkRooms && !bulkRoomIds.length} tabIndex={-1} sx={{ border: 1, borderColor: 'divider', p: 1, maxHeight: 150, overflow: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                                     {rooms.map(r => (
